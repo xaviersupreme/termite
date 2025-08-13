@@ -94,4 +94,13 @@ if(TERMITE_BUILD_TESTS)
     target_link_libraries(termite_ui_tests PRIVATE termite_dsp)
     target_include_directories(termite_ui_tests PRIVATE src)
     add_test(NAME termite_ui_tests COMMAND termite_ui_tests)
+
+    if(WIN32)
+        add_test(
+            NAME termite_installer_layout_tests
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_SOURCE_DIR}/tests/test_installer_layout.ps1"
+                -root "${CMAKE_SOURCE_DIR}"
+        )
+    endif()
 endif()

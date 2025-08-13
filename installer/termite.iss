@@ -20,14 +20,15 @@ ArchitecturesInstallIn64BitMode=x64compatible
 
 [Files]
 Source: "..\dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\.tooling\release\vb_cable\VBCABLE_Setup_x64.exe"; DestDir: "{app}\support"; Flags: ignoreversion; Check: IsWin64
-Source: "..\.tooling\release\vb_cable\VBCABLE_Setup.exe"; DestDir: "{app}\support"; Flags: ignoreversion; Check: not IsWin64
+; VB-CABLE setup must run beside its INF/SYS/CAT package.  Do not reduce this
+; to the setup EXE: the vendor installer deliberately rejects that layout.
+Source: "..\.tooling\release\vb_cable\*"; DestDir: "{app}\support\vb_cable"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\.tooling\release\vc_redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: IsWin64
 
 [Icons]
 Name: "{group}\Termite"; Filename: "{app}\Termite.exe"
-Name: "{group}\Install or repair VB-CABLE"; Filename: "{app}\support\VBCABLE_Setup_x64.exe"; Parameters: "-i"; Check: IsWin64
-Name: "{group}\Install or repair VB-CABLE"; Filename: "{app}\support\VBCABLE_Setup.exe"; Parameters: "-i"; Check: not IsWin64
+Name: "{group}\Install or repair VB-CABLE"; Filename: "{app}\support\vb_cable\VBCABLE_Setup_x64.exe"; Parameters: "-i"; Check: IsWin64
+Name: "{group}\Install or repair VB-CABLE"; Filename: "{app}\support\vb_cable\VBCABLE_Setup.exe"; Parameters: "-i"; Check: not IsWin64
 Name: "{autodesktop}\Termite"; Filename: "{app}\Termite.exe"; Tasks: desktop_icon
 
 [Tasks]
@@ -54,9 +55,9 @@ end;
 function VbCableInstallerPath: String;
 begin
   if IsWin64 then
-    Result := ExpandConstant('{app}\support\VBCABLE_Setup_x64.exe')
+    Result := ExpandConstant('{app}\support\vb_cable\VBCABLE_Setup_x64.exe')
   else
-    Result := ExpandConstant('{app}\support\VBCABLE_Setup.exe');
+    Result := ExpandConstant('{app}\support\vb_cable\VBCABLE_Setup.exe');
 end;
 
 function VbCableProbeParams: String;
