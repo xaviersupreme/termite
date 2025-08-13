@@ -20,6 +20,19 @@ $vc_stage = Assert-WorkspaceChild -Path (Join-Path $release_stage 'vc_redist')
 Remove-Item -LiteralPath $release_stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $vb_stage, $vc_stage | Out-Null
 Expand-Archive -LiteralPath $vb_archive -DestinationPath $vb_stage -Force
+$required_vb_files = @(
+    'VBCABLE_Setup.exe',
+    'VBCABLE_Setup_x64.exe',
+    'vbMmeCable64_win10.inf',
+    'vbaudio_cable64_win10.sys',
+    'vbaudio_cable64_win10.cat'
+)
+foreach ($required_vb_file in $required_vb_files) {
+    $required_vb_path = Join-Path $vb_stage $required_vb_file
+    if (-not (Test-Path -LiteralPath $required_vb_path -PathType Leaf)) {
+        throw "The VB-CABLE package is incomplete; expected '$required_vb_file' beside the vendor setup executable."
+    }
+}
 Copy-Item -LiteralPath $vc_redist -Destination (Join-Path $vc_stage 'vc_redist.x64.exe') -Force
 
 $distribution = Assert-WorkspaceChild -Path (Join-Path $root 'dist')
