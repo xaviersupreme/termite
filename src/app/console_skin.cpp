@@ -170,6 +170,7 @@ void console_skin::draw_title_bar(console_rect bounds) const {
     }
 
     const auto frame = rect(bounds);
+    target_->FillRectangle(frame, brush(D2D1::ColorF(0.030F, 0.033F, 0.037F)));
     const auto inner = D2D1::RectF(frame.left + 1.0F, frame.top + 1.0F, frame.right - 1.0F, frame.bottom - 1.0F);
     const D2D1_GRADIENT_STOP stops[]{
         {0.0F, D2D1::ColorF(0.25F, 0.26F, 0.27F, 0.52F)},

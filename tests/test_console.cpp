@@ -69,6 +69,10 @@ void test_title_and_menu_alignment() {
     assert(label.right() <= title.right() && label.bottom() <= title.bottom());
     assert(termite::console_layout::minimize_button().right() < termite::console_layout::close_button().x);
     assert(termite::console_layout::close_button().right() <= title.right());
+    assert(std::abs((termite::console_layout::minimize_button().y + termite::console_layout::minimize_button().height * 0.5F) -
+                    (title.y + title.height * 0.5F)) < 0.001F);
+    assert(std::abs((termite::console_layout::close_button().y + termite::console_layout::close_button().height * 0.5F) -
+                    (title.y + title.height * 0.5F)) < 0.001F);
 
     const auto menu = termite::console_layout::menu_bar();
     const auto graph = termite::console_layout::graph_frame();
@@ -118,6 +122,10 @@ void test_derived_console_geometry() {
     for (std::size_t index = 0; index < 3; ++index) {
         assert(termite::console_layout::graph_db_label(index).right() <= first_track.x - 5.0F);
     }
+    assert(std::abs((termite::console_layout::graph_db_label(0).y + termite::console_layout::graph_db_label(0).height * 0.5F) - first_track.y) < 0.001F);
+    assert(std::abs((termite::console_layout::graph_db_label(1).y + termite::console_layout::graph_db_label(1).height * 0.5F) -
+                    (first_track.y + first_track.height * 0.5F)) < 0.001F);
+    assert(std::abs((termite::console_layout::graph_db_label(2).y + termite::console_layout::graph_db_label(2).height * 0.5F) - first_track.bottom()) < 0.001F);
 
     const auto equalizer = termite::console_layout::group_rect(termite::console_group::equalizer);
     const auto toggle = termite::console_layout::equalizer_toggle();
