@@ -19,8 +19,7 @@ constexpr float status_top_gap = 25.0F;
 constexpr console_rect status_box{status_inset, left_bay_box.y + status_top_gap, left_bay_box.width - status_inset - 5.0F, 176.0F};
 constexpr console_rect scroll_track{status_box.x + status_box.width - 17.0F, status_box.y + 3.0F, 14.0F, status_box.height - 7.0F};
 
-constexpr float workspace_gap = 4.0F;
-constexpr console_rect graph_box{left_bay_box.x + left_bay_box.width + workspace_gap, menu_box.y + menu_box.height, console_design_width - left_bay_box.width - workspace_gap - 7.0F, 303.0F};
+constexpr console_rect graph_box{left_bay_width, menu_box.y + menu_box.height, console_design_width - left_bay_width, 303.0F};
 constexpr float graph_axis_gutter = 37.0F;
 constexpr console_rect graph_area{graph_box.x + graph_axis_gutter, graph_box.y + 31.0F, graph_box.width - graph_axis_gutter - 10.0F, graph_box.height - 31.0F - 28.0F};
 constexpr console_rect graph_y_axis_box{graph_area.x - 1.0F, graph_area.y, 1.0F, graph_area.height};
@@ -113,11 +112,11 @@ console_rect console_layout::title_label() noexcept { return title_label_box; }
 
 console_rect console_layout::menu_bar() noexcept { return menu_box; }
 console_rect console_layout::minimize_button() noexcept {
-    return {title_box.right() - 49.0F, 6.0F, 17.0F, 16.0F};
+    return {title_box.right() - 49.0F, 4.0F, 17.0F, 16.0F};
 }
 
 console_rect console_layout::close_button() noexcept {
-    return {title_box.right() - 27.0F, 6.0F, 17.0F, 16.0F};
+    return {title_box.right() - 27.0F, 4.0F, 17.0F, 16.0F};
 }
 
 console_rect console_layout::status_viewport() noexcept {
@@ -269,12 +268,13 @@ console_rect console_layout::graph_db_label(std::size_t index) noexcept {
     }
 
     constexpr float label_gap = 5.0F;
-    const auto first_arrow = fader_up(0);
-    const float x = first_arrow.x - label_gap - label_widths[index];
+    const auto first_track = fader_track(0);
+    const float x = first_track.x - label_gap - label_widths[index];
+    constexpr float label_height = 13.0F;
     switch (index) {
-        case 0: return {x, fader_up_y - 6.0F, label_widths[index], 13.0F};
-        case 1: return {x, fader_track_y + (fader_track_height - 13.0F) * 0.5F, label_widths[index], 13.0F};
-        case 2: return {x, fader_down_y + 7.0F, label_widths[index], 13.0F};
+        case 0: return {x, first_track.y - label_height * 0.5F, label_widths[index], label_height};
+        case 1: return {x, first_track.y + (first_track.height - label_height) * 0.5F, label_widths[index], label_height};
+        case 2: return {x, first_track.bottom() - label_height * 0.5F, label_widths[index], label_height};
         default: return {};
     }
 }
