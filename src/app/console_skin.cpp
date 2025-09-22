@@ -223,9 +223,35 @@ void console_skin::draw_graph_surface(console_rect bounds) const {
 }
 
 void console_skin::draw_group(console_rect bounds) const {
+    if (target_ == nullptr || bounds.width <= 2.0F || bounds.height <= 2.0F) {
+        return;
+    }
+
     const auto frame = rect(bounds);
-    target_->FillRectangle(frame, brush(D2D1::ColorF(0.025F, 0.028F, 0.031F, 0.62F)));
-    target_->DrawRectangle(frame, brush(D2D1::ColorF(0.19F, 0.21F, 0.22F)));
+    const auto outer = D2D1::RoundedRect(frame, 4.0F, 4.0F);
+    target_->FillRoundedRectangle(outer, brush(D2D1::ColorF(0.006F, 0.008F, 0.010F, 0.92F)));
+    target_->DrawRoundedRectangle(outer, brush(D2D1::ColorF(0.010F, 0.012F, 0.014F)));
+
+    const auto inner = D2D1::RectF(frame.left + 1.5F, frame.top + 1.5F, frame.right - 1.5F, frame.bottom - 1.5F);
+    const auto inner_round = D2D1::RoundedRect(inner, 3.0F, 3.0F);
+    const D2D1_GRADIENT_STOP stops[]{
+        {0.0F, D2D1::ColorF(0.16F, 0.17F, 0.18F, 0.68F)},
+        {0.12F, D2D1::ColorF(0.070F, 0.075F, 0.080F, 0.72F)},
+        {1.0F, D2D1::ColorF(0.026F, 0.029F, 0.032F, 0.76F)},
+    };
+    Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> collection;
+    Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> gradient;
+    if (SUCCEEDED(target_->CreateGradientStopCollection(stops, std::size(stops), &collection)) &&
+        SUCCEEDED(target_->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(inner.left, inner.top), D2D1::Point2F(inner.left, inner.bottom)), collection.Get(), &gradient))) {
+        target_->FillRoundedRectangle(inner_round, gradient.Get());
+    } else {
+        target_->FillRoundedRectangle(inner_round, brush(D2D1::ColorF(0.045F, 0.049F, 0.053F, 0.74F)));
+    }
+    target_->DrawRoundedRectangle(inner_round, brush(D2D1::ColorF(0.30F, 0.32F, 0.33F, 0.42F)));
+    target_->DrawLine(D2D1::Point2F(inner.left + 4.0F, inner.bottom - 0.5F), D2D1::Point2F(inner.right - 4.0F, inner.bottom - 0.5F),
+                      brush(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.85F)));
+    target_->DrawLine(D2D1::Point2F(inner.right - 0.5F, inner.top + 4.0F), D2D1::Point2F(inner.right - 0.5F, inner.bottom - 4.0F),
+                      brush(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.85F)));
 }
 
 void console_skin::draw_button(console_rect bounds, std::wstring_view label, console_visual_state state) const {
