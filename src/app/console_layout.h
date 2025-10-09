@@ -52,6 +52,7 @@ enum class console_control {
     fader_up,
     fader_track,
     fader_down,
+    fader_value,
     profile_open,
     profile_save,
     preset_zero,

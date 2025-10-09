@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cwchar>
 #include <dwmapi.h>
 #include <format>
 #include <numbers>
@@ -15,6 +16,7 @@ namespace {
 
 constexpr wchar_t window_class_name[] = L"TermiteConsoleWindow";
 constexpr UINT_PTR status_timer_id = 1;
+constexpr int fader_edit_control_id = 1001;
 constexpr DWORD dark_mode_attribute = 20;
 constexpr float filter_menu_header_height = 22.0F;
 constexpr float filter_menu_row_height = 19.0F;
@@ -162,6 +164,31 @@ LRESULT CALLBACK console_window::window_proc(HWND window, UINT message, WPARAM w
     return self == nullptr ? DefWindowProcW(window, message, wparam, lparam) : self->handle_message(message, wparam, lparam);
 }
 
+LRESULT CALLBACK console_window::fader_edit_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    const auto* self = reinterpret_cast<console_window*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (self == nullptr || self->fader_edit_original_proc_ == nullptr) {
+        return DefWindowProcW(window, message, wparam, lparam);
+    }
+
+    if (message == WM_KEYDOWN) {
+        if (wparam == VK_RETURN) {
+            const_cast<console_window*>(self)->finish_fader_edit(true);
+            return 0;
+        }
+        if (wparam == VK_ESCAPE) {
+            const_cast<console_window*>(self)->finish_fader_edit(false);
+            return 0;
+        }
+    }
+    if (message == WM_CHAR) {
+        const auto character = static_cast<wchar_t>(wparam);
+        if (!(character == VK_BACK || (character >= L'0' && character <= L'9') || character == L'-' || character == L'.')) {
+            return 0;
+        }
+    }
+    return CallWindowProcW(self->fader_edit_original_proc_, window, message, wparam, lparam);
+}
+
 LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
         case WM_NCHITTEST: {
@@ -219,6 +246,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
             if (render_target_ != nullptr) {
                 render_target_->Resize(D2D1::SizeU(LOWORD(lparam), HIWORD(lparam)));
             }
+            position_fader_edit();
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case WM_ERASEBKGND:
@@ -281,6 +309,13 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 return 0;
             }
             const auto hit = console_layout::hit_test(design, state_.notices().size(), state_.scroll_offset());
+            if (editing_fader_ >= 0 && (hit.control != console_control::fader_value || hit.index != editing_fader_)) {
+                finish_fader_edit(true);
+            }
+            if (hit.control == console_control::fader_value) {
+                begin_fader_edit(hit.index);
+                return 0;
+            }
             pressed_hit_ = hit;
             if (hit.control == console_control::fader_track) {
                 active_fader_ = hit.index;
@@ -386,6 +421,20 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 execute_control({console_control::detect});
             }
             return 0;
+        case WM_COMMAND:
+            if (reinterpret_cast<HWND>(lparam) == fader_edit_ && HIWORD(wparam) == EN_KILLFOCUS) {
+                finish_fader_edit(true);
+                return 0;
+            }
+            return DefWindowProcW(window_, message, wparam, lparam);
+        case WM_CTLCOLOREDIT:
+            if (reinterpret_cast<HWND>(lparam) == fader_edit_) {
+                const auto device_context = reinterpret_cast<HDC>(wparam);
+                SetTextColor(device_context, RGB(242, 239, 201));
+                SetBkColor(device_context, RGB(4, 5, 6));
+                return reinterpret_cast<LRESULT>(GetStockObject(BLACK_BRUSH));
+            }
+            return DefWindowProcW(window_, message, wparam, lparam);
         case WM_DESTROY:
             KillTimer(window_, status_timer_id);
             audio_engine_.stop();
@@ -613,8 +662,10 @@ void console_window::draw_faders() {
         const auto fader_pressed = pressed_hit_.index == static_cast<int>(index) && active_fader_ == static_cast<int>(index);
         skin_->draw_text(band_label(band.frequency_hz), console_layout::fader_frequency_label(index), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
         skin_->draw_fader(up, track, down, band.gain_db, fader_pressed ? console_visual_state::pressed : fader_hot ? console_visual_state::hot : console_visual_state::normal);
-        skin_->draw_panel(value);
-        skin_->draw_display_number(gain_label(band.gain_db), value);
+        if (editing_fader_ != static_cast<int>(index)) {
+            skin_->draw_panel(value);
+            skin_->draw_display_number(gain_label(band.gain_db), value);
+        }
     }
 }
 
@@ -811,6 +862,84 @@ void console_window::update_fader_from_point(int index, console_point point) {
         sync_profile();
         InvalidateRect(window_, nullptr, FALSE);
     }
+}
+
+void console_window::begin_fader_edit(int index) {
+    if (index < 0 || index >= static_cast<int>(graphic_band_count)) return;
+    if (editing_fader_ == index && fader_edit_ != nullptr) {
+        SetFocus(fader_edit_);
+        SendMessageW(fader_edit_, EM_SETSEL, 0, -1);
+        return;
+    }
+    finish_fader_edit(true);
+
+    editing_fader_ = index;
+    const auto label = gain_label(state_.profile().bands[static_cast<std::size_t>(index)].gain_db);
+    fader_edit_ = CreateWindowExW(0,
+                                  L"EDIT",
+                                  label.c_str(),
+                                  WS_CHILD | WS_VISIBLE | WS_BORDER | ES_CENTER | ES_AUTOHSCROLL,
+                                  0,
+                                  0,
+                                  1,
+                                  1,
+                                  window_,
+                                  reinterpret_cast<HMENU>(static_cast<INT_PTR>(fader_edit_control_id)),
+                                  instance_,
+                                  nullptr);
+    if (fader_edit_ == nullptr) {
+        editing_fader_ = -1;
+        return;
+    }
+
+    SetWindowLongPtrW(fader_edit_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+    fader_edit_original_proc_ = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(fader_edit_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&console_window::fader_edit_proc)));
+    SendMessageW(fader_edit_, EM_SETLIMITTEXT, 5, 0);
+    SendMessageW(fader_edit_, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+    position_fader_edit();
+    SetFocus(fader_edit_);
+    SendMessageW(fader_edit_, EM_SETSEL, 0, -1);
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void console_window::finish_fader_edit(bool commit) {
+    if (editing_fader_ < 0) return;
+
+    const int index = editing_fader_;
+    if (commit && fader_edit_ != nullptr) {
+        std::array<wchar_t, 16> text{};
+        GetWindowTextW(fader_edit_, text.data(), static_cast<int>(text.size()));
+        wchar_t* end{};
+        const float gain = std::wcstof(text.data(), &end);
+        if (end != text.data() && *end == L'\0' && std::isfinite(gain) && state_.set_fader_gain(static_cast<std::size_t>(index), gain)) {
+            sync_profile();
+        }
+    }
+
+    const auto editor = fader_edit_;
+    fader_edit_ = nullptr;
+    fader_edit_original_proc_ = nullptr;
+    editing_fader_ = -1;
+    if (editor != nullptr) {
+        DestroyWindow(editor);
+    }
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void console_window::position_fader_edit() {
+    if (fader_edit_ == nullptr || editing_fader_ < 0) return;
+    const auto bounds = console_layout::fader_value(static_cast<std::size_t>(editing_fader_));
+    RECT client{};
+    GetClientRect(window_, &client);
+    const float width = static_cast<float>(std::max(1L, client.right - client.left));
+    const float height = static_cast<float>(std::max(1L, client.bottom - client.top));
+    SetWindowPos(fader_edit_,
+                 HWND_TOP,
+                 static_cast<int>(std::lround(bounds.x * width / console_design_width)),
+                 static_cast<int>(std::lround(bounds.y * height / console_design_height)),
+                 std::max(1, static_cast<int>(std::lround(bounds.width * width / console_design_width))),
+                 std::max(1, static_cast<int>(std::lround(bounds.height * height / console_design_height))),
+                 SWP_NOACTIVATE);
 }
 
 void console_window::show_fader_filter_menu(int band, console_point anchor) {

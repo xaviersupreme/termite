@@ -28,6 +28,7 @@ public:
 
 private:
     static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
+    static LRESULT CALLBACK fader_edit_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 
     [[nodiscard]] bool create_window();
     [[nodiscard]] LRESULT handle_message(UINT message, WPARAM wparam, LPARAM lparam);
@@ -46,6 +47,9 @@ private:
     void update_pointer(POINT client_point);
     void execute_control(console_hit hit);
     void update_fader_from_point(int index, console_point point);
+    void begin_fader_edit(int index);
+    void finish_fader_edit(bool commit);
+    void position_fader_edit();
     void update_scroll_from_point(console_point point);
     void show_fader_filter_menu(int band, console_point anchor);
     void execute_fader_filter_menu_row(int row);
@@ -78,6 +82,9 @@ private:
     console_hit hot_hit_{};
     console_hit pressed_hit_{};
     int active_fader_{-1};
+    HWND fader_edit_{};
+    WNDPROC fader_edit_original_proc_{};
+    int editing_fader_{-1};
     int filter_menu_band_{-1};
     int filter_menu_hot_row_{-1};
     int filter_menu_pressed_row_{-1};

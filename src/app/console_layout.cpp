@@ -456,7 +456,7 @@ console_hit console_layout::hit_test(console_point point, std::size_t message_co
         if (fader_up(index).contains(point)) return {console_control::fader_up, static_cast<int>(index)};
         if (fader_track(index).contains(point)) return {console_control::fader_track, static_cast<int>(index)};
         if (fader_down(index).contains(point)) return {console_control::fader_down, static_cast<int>(index)};
-        if (fader_value(index).contains(point)) return {console_control::fader_track, static_cast<int>(index)};
+        if (fader_value(index).contains(point)) return {console_control::fader_value, static_cast<int>(index)};
     }
 
     for (std::size_t index = 0; index < left_buttons.size(); ++index) {
