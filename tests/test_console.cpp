@@ -37,6 +37,11 @@ void test_hit_testing() {
     assert(track.control == termite::console_control::fader_track);
     assert(track.index == 0);
 
+    const auto first_value = termite::console_layout::fader_value(0);
+    const auto value = termite::console_layout::hit_test({first_value.x + first_value.width * 0.5F, first_value.y + first_value.height * 0.5F}, 20, 0.0F);
+    assert(value.control == termite::console_control::fader_value);
+    assert(value.index == 0);
+
     const auto thumb = termite::console_layout::status_scroll_thumb(100, 90.0F);
     assert(thumb.height >= 22.0F);
     assert(thumb.y >= termite::console_layout::status_scroll_track().y);
@@ -196,6 +201,8 @@ void test_console_commands() {
     const auto reset = state.activate(termite::console_control::reset);
     assert(reset.profile_changed);
     assert(std::abs(state.profile().bands[0].gain_db) < 0.01F);
+    assert(state.set_fader_gain(0, 999.0F));
+    assert(std::abs(state.profile().bands[0].gain_db - 20.0F) < 0.01F);
 
     assert(termite::console_layout::snap_fader_gain(-1.8F) == -2.0F);
     assert(termite::console_layout::snap_fader_gain(1.8F) == 2.0F);
