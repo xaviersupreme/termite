@@ -547,7 +547,7 @@ void console_window::draw_title_and_menu() {
 }
 
 void console_window::draw_left_bay() {
-    skin_->draw_group(console_layout::group_rect(console_group::left_bay));
+    skin_->draw_group(console_layout::group_rect(console_group::left_bay), console_layout::notification_label());
     skin_->draw_text(L"Notification control:", console_layout::notification_label(), console_text_style::label);
     skin_->draw_panel(console_layout::status_viewport());
     const auto& notices = state_.notices();
@@ -573,11 +573,11 @@ void console_window::draw_left_bay() {
     }
 
     const auto equalizer = console_layout::group_rect(console_group::equalizer);
-    skin_->draw_group(equalizer);
+    skin_->draw_group(equalizer, console_layout::equalizer_label());
     skin_->draw_text(L"Equalizer", console_layout::equalizer_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_equalizer_toggle(console_layout::equalizer_toggle(), state_.profile().enabled);
 
-    skin_->draw_group(console_layout::group_rect(console_group::blender));
+    skin_->draw_group(console_layout::group_rect(console_group::blender), console_layout::blender_label());
     skin_->draw_text(L"Blender mix", console_layout::blender_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_text(L"Dry", console_layout::blender_dry_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_text(L"Wet", console_layout::blender_wet_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -588,7 +588,7 @@ void console_window::draw_left_bay() {
     skin_->draw_button(console_layout::control_rect(console_control::blender_increase), L"Increase mix", visual_state_for({console_control::blender_increase}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::blender_decrease), L"Decrease mix", visual_state_for({console_control::blender_decrease}, hot_hit_, pressed_hit_));
 
-    skin_->draw_group(console_layout::group_rect(console_group::digital_volume));
+    skin_->draw_group(console_layout::group_rect(console_group::digital_volume), console_layout::digital_volume_label());
     skin_->draw_text(L"Digital volume", console_layout::digital_volume_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_panel(console_layout::digital_volume_display());
     skin_->draw_display_number(std::format(L"{:.0f}", state_.profile().preamp_db), console_layout::digital_volume_display());
@@ -671,8 +671,10 @@ void console_window::draw_faders() {
 
 void console_window::draw_bottom_controls() {
     const auto draw_labeled_group = [this](console_rect box, std::wstring_view label) {
-        skin_->draw_group(box);
-        skin_->draw_text(label, {box.x + 8.0F, box.y - 9.0F, box.width - 16.0F, 16.0F}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+        const float label_width = std::min(box.width - 18.0F, 13.0F + static_cast<float>(label.size()) * 5.4F);
+        const console_rect label_box{box.x + 10.0F, box.y - 9.0F, label_width, 16.0F};
+        skin_->draw_group(box, label_box);
+        skin_->draw_text(label, label_box, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     };
     draw_labeled_group(console_layout::group_rect(console_group::profiles), L"Profiles");
     draw_labeled_group(console_layout::group_rect(console_group::presets), L"Pre-sets");
