@@ -42,6 +42,7 @@ private:
     void draw_graph();
     void draw_faders();
     void draw_bottom_controls();
+    void draw_preset_dropdown();
     void draw_fader_filter_menu();
     void draw_routing_picker();
     void update_pointer(POINT client_point);
@@ -66,6 +67,7 @@ private:
     [[nodiscard]] bool is_hot(console_hit hit) const noexcept;
     [[nodiscard]] bool is_pressed(console_hit hit) const noexcept;
     [[nodiscard]] int fader_filter_menu_row(console_point point) const noexcept;
+    [[nodiscard]] int preset_dropdown_row(console_point point) const noexcept;
     [[nodiscard]] int routing_picker_row(console_point point) const noexcept;
 
     HINSTANCE instance_{};
@@ -85,6 +87,9 @@ private:
     HWND fader_edit_{};
     WNDPROC fader_edit_original_proc_{};
     int editing_fader_{-1};
+    bool preset_dropdown_open_{};
+    int preset_dropdown_hot_row_{-1};
+    int preset_dropdown_pressed_row_{-1};
     int filter_menu_band_{-1};
     int filter_menu_hot_row_{-1};
     int filter_menu_pressed_row_{-1};

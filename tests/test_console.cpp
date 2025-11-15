@@ -167,6 +167,16 @@ void test_derived_console_geometry() {
         assert(button.x >= picker.x && button.right() <= picker.right());
         assert(button.y >= picker.y && button.bottom() <= picker.bottom());
     }
+
+    const auto preset_field = termite::console_layout::control_rect(termite::console_control::preset_cycle);
+    const auto preset_popup = termite::console_layout::preset_dropdown_frame();
+    assert(preset_popup.width == preset_field.width);
+    assert(preset_popup.bottom() < preset_field.y);
+    for (std::size_t index = 0; index < termite::console_state::preset_count(); ++index) {
+        const auto item = termite::console_layout::preset_dropdown_item(index);
+        assert(item.x >= preset_popup.x && item.right() <= preset_popup.right());
+        assert(item.y >= preset_popup.y && item.bottom() <= preset_popup.bottom());
+    }
 }
 
 void test_display_layout_centering() {
@@ -213,6 +223,11 @@ void test_console_commands() {
     assert(state.set_fader_shape(0, termite::filter_shape::notch));
     assert(state.set_fader_enabled(0, false));
     assert(!state.profile().bands[0].enabled);
+    assert(termite::console_state::preset_count() == 3);
+    assert(state.apply_preset(1));
+    assert(state.selected_preset_index() == 1);
+    assert(state.preset_label() == L"Vocal");
+    assert(!state.apply_preset(termite::console_state::preset_count()));
 
     const auto grid = state.grid_visible();
     state.activate(termite::console_control::grid);

@@ -288,6 +288,27 @@ console_rect console_layout::smoothing_value() noexcept {
     return {x + button_width + gap, smoothing_box.y + 48.0F, display_width, 25.0F};
 }
 
+console_rect console_layout::preset_dropdown_frame() noexcept {
+    constexpr float padding = 2.0F;
+    constexpr float row_height = 22.0F;
+    constexpr float field_gap = 2.0F;
+    constexpr float row_count = 3.0F;
+    const auto field = control_rect(console_control::preset_cycle);
+    const float height = padding * 2.0F + row_height * row_count;
+    return {field.x, field.y - field_gap - height, field.width, height};
+}
+
+console_rect console_layout::preset_dropdown_item(std::size_t index) noexcept {
+    constexpr float padding = 2.0F;
+    constexpr float row_height = 22.0F;
+    if (index >= 3) return {};
+    const auto frame = preset_dropdown_frame();
+    return {frame.x + padding,
+            frame.y + padding + static_cast<float>(index) * row_height,
+            frame.width - padding * 2.0F,
+            row_height - 1.0F};
+}
+
 std::size_t console_layout::routing_picker_visible_rows(std::size_t candidate_count) noexcept {
     return std::clamp(candidate_count, std::size_t{1}, routing_picker_max_rows);
 }

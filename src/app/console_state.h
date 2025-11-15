@@ -33,6 +33,9 @@ public:
     [[nodiscard]] std::size_t background_index() const noexcept;
     [[nodiscard]] bool is_selected(console_control control) const noexcept;
     [[nodiscard]] std::wstring preset_label() const;
+    [[nodiscard]] static std::size_t preset_count() noexcept;
+    [[nodiscard]] static std::wstring_view preset_name(std::size_t index) noexcept;
+    [[nodiscard]] int selected_preset_index() const noexcept;
 
     console_action_result activate(console_control control);
     bool set_fader_gain(std::size_t index, float gain_db);
@@ -40,6 +43,7 @@ public:
     bool adjust_fader_q(std::size_t index, float delta_q);
     bool set_fader_shape(std::size_t index, filter_shape shape);
     bool set_fader_enabled(std::size_t index, bool enabled);
+    bool apply_preset(std::size_t index);
     void set_scroll_offset(float offset) noexcept;
     void append_engine_status(const std::string& status);
 
