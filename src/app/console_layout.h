@@ -133,6 +133,8 @@ public:
     [[nodiscard]] static console_rect fader_bank() noexcept;
     [[nodiscard]] static console_rect fader_frequency_label(std::size_t index) noexcept;
     [[nodiscard]] static console_rect smoothing_value() noexcept;
+    [[nodiscard]] static console_rect preset_dropdown_frame() noexcept;
+    [[nodiscard]] static console_rect preset_dropdown_item(std::size_t index) noexcept;
     [[nodiscard]] static std::size_t routing_picker_visible_rows(std::size_t candidate_count) noexcept;
     [[nodiscard]] static console_rect routing_picker_frame(std::size_t candidate_count) noexcept;
     [[nodiscard]] static console_rect routing_picker_row(std::size_t candidate_count, std::size_t visible_index) noexcept;

@@ -6,6 +6,9 @@
 namespace termite {
 namespace {
 
+constexpr std::array<std::string_view, 3> preset_ids{"bass", "vocal", "bright"};
+constexpr std::array<std::wstring_view, 3> preset_labels{L"Bass boost", L"Vocal", L"Bright"};
+
 std::wstring widen(const std::string& value) {
     return {value.begin(), value.end()};
 }
@@ -40,9 +43,16 @@ bool console_state::is_selected(console_control control) const noexcept {
 }
 
 std::wstring console_state::preset_label() const {
-    constexpr std::array<std::wstring_view, 3> labels{L"Bass boost", L"Vocal", L"Bright"};
-    return preset_index_ < 0 ? L"Bass boost" : std::wstring{labels[static_cast<std::size_t>(preset_index_)]};
+    return preset_index_ < 0 ? std::wstring{preset_labels.front()} : std::wstring{preset_labels[static_cast<std::size_t>(preset_index_)]};
 }
+
+std::size_t console_state::preset_count() noexcept { return preset_ids.size(); }
+
+std::wstring_view console_state::preset_name(std::size_t index) noexcept {
+    return index < preset_labels.size() ? preset_labels[index] : std::wstring_view{};
+}
+
+int console_state::selected_preset_index() const noexcept { return preset_index_; }
 
 console_action_result console_state::activate(console_control control) {
     console_action_result result;
@@ -215,6 +225,14 @@ bool console_state::set_fader_enabled(std::size_t index, bool enabled) {
     return true;
 }
 
+bool console_state::apply_preset(std::size_t index) {
+    if (index >= preset_ids.size()) return false;
+    preset_index_ = static_cast<int>(index);
+    profile_ = eq_profile::preset(preset_ids[index]);
+    append_notice(preset_label() + L" preset applied.");
+    return true;
+}
+
 void console_state::set_scroll_offset(float offset) noexcept {
     const auto content_height = std::max(1.0F, static_cast<float>(notices_.size()) * 15.0F);
     const auto max_scroll = std::max(0.0F, content_height - (console_layout::status_viewport().height - 8.0F));
@@ -238,10 +256,8 @@ void console_state::reset_profile() {
 }
 
 void console_state::apply_next_preset() {
-    constexpr std::array<std::string_view, 3> names{"bass", "vocal", "bright"};
-    preset_index_ = (preset_index_ + 1) % static_cast<int>(names.size());
-    profile_ = eq_profile::preset(names[static_cast<std::size_t>(preset_index_)]);
-    append_notice(preset_label() + L" preset applied.");
+    const auto next = static_cast<std::size_t>((preset_index_ + 1) % static_cast<int>(preset_ids.size()));
+    apply_preset(next);
 }
 
 }  // namespace termite

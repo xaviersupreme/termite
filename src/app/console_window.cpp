@@ -279,12 +279,28 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
             tracking_mouse_ = false;
             hot_hit_ = {};
             filter_menu_hot_row_ = -1;
+            preset_dropdown_hot_row_ = -1;
             routing_picker_hot_row_ = -1;
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case WM_LBUTTONDOWN: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             const auto design = to_design(point);
+            if (preset_dropdown_open_) {
+                const auto row = preset_dropdown_row(design);
+                if (row >= 0) {
+                    preset_dropdown_pressed_row_ = row;
+                    SetCapture(window_);
+                    InvalidateRect(window_, nullptr, FALSE);
+                    return 0;
+                }
+                preset_dropdown_open_ = false;
+                preset_dropdown_pressed_row_ = -1;
+                if (console_layout::control_rect(console_control::preset_cycle).contains(design)) {
+                    InvalidateRect(window_, nullptr, FALSE);
+                    return 0;
+                }
+            }
             if (routing_picker_open_) {
                 const auto row = routing_picker_row(design);
                 if (row >= 0 || row == routing_picker_refresh || row == routing_picker_open || row == routing_picker_close) {
@@ -316,6 +332,13 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 begin_fader_edit(hit.index);
                 return 0;
             }
+            if (hit.control == console_control::preset_cycle) {
+                preset_dropdown_open_ = true;
+                preset_dropdown_hot_row_ = -1;
+                preset_dropdown_pressed_row_ = -1;
+                InvalidateRect(window_, nullptr, FALSE);
+                return 0;
+            }
             pressed_hit_ = hit;
             if (hit.control == console_control::fader_track) {
                 active_fader_ = hit.index;
@@ -332,6 +355,18 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         }
         case WM_LBUTTONUP: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+            if (preset_dropdown_open_ && preset_dropdown_pressed_row_ >= 0) {
+                const auto row = preset_dropdown_row(to_design(point));
+                if (GetCapture() == window_) ReleaseCapture();
+                if (row == preset_dropdown_pressed_row_ && state_.apply_preset(static_cast<std::size_t>(row))) {
+                    sync_profile();
+                }
+                preset_dropdown_open_ = false;
+                preset_dropdown_hot_row_ = -1;
+                preset_dropdown_pressed_row_ = -1;
+                InvalidateRect(window_, nullptr, FALSE);
+                return 0;
+            }
             if (routing_picker_open_) {
                 const auto row = routing_picker_row(to_design(point));
                 if (GetCapture() == window_) ReleaseCapture();
@@ -411,7 +446,12 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         }
         case WM_KEYDOWN:
             if (wparam == VK_ESCAPE) {
-                if (routing_picker_open_) {
+                if (preset_dropdown_open_) {
+                    preset_dropdown_open_ = false;
+                    preset_dropdown_hot_row_ = -1;
+                    preset_dropdown_pressed_row_ = -1;
+                    InvalidateRect(window_, nullptr, FALSE);
+                } else if (routing_picker_open_) {
                     routing_picker_open_ = false;
                     InvalidateRect(window_, nullptr, FALSE);
                 } else {
@@ -518,6 +558,7 @@ void console_window::draw_console() {
     draw_graph();
     draw_faders();
     draw_bottom_controls();
+    draw_preset_dropdown();
     draw_fader_filter_menu();
     draw_routing_picker();
 }
@@ -684,7 +725,9 @@ void console_window::draw_bottom_controls() {
     skin_->draw_button(console_layout::control_rect(console_control::profile_open), L"Open profile", visual_state_for({console_control::profile_open}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::profile_save), L"Save profile", visual_state_for({console_control::profile_save}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::preset_zero), L"All zero", visual_state_for({console_control::preset_zero}, hot_hit_, pressed_hit_));
-    skin_->draw_button(console_layout::control_rect(console_control::preset_cycle), state_.preset_label(), visual_state_for({console_control::preset_cycle}, hot_hit_, pressed_hit_));
+    skin_->draw_combo_box(console_layout::control_rect(console_control::preset_cycle), state_.preset_label(), preset_dropdown_open_,
+                          preset_dropdown_open_ ? console_visual_state::selected
+                                                : visual_state_for({console_control::preset_cycle}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::smoothing_reset), L"Reset", visual_state_for({console_control::smoothing_reset}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::smoothing_decrease), L"-", visual_state_for({console_control::smoothing_decrease}, hot_hit_, pressed_hit_));
     skin_->draw_panel(console_layout::smoothing_value());
@@ -694,6 +737,19 @@ void console_window::draw_bottom_controls() {
     skin_->draw_button(console_layout::control_rect(console_control::export_response), L"Export response", visual_state_for({console_control::export_response}, hot_hit_, pressed_hit_));
     skin_->draw_checkbox(console_layout::control_rect(console_control::grid), state_.grid_visible(), L"Grid");
     skin_->draw_button(console_layout::control_rect(console_control::help_button), L"Help", visual_state_for({console_control::help_button}, hot_hit_, pressed_hit_));
+}
+
+void console_window::draw_preset_dropdown() {
+    if (!preset_dropdown_open_) return;
+    const auto frame = console_layout::preset_dropdown_frame();
+    skin_->draw_panel(frame, true);
+    for (std::size_t index = 0; index < console_state::preset_count(); ++index) {
+        const auto visual = preset_dropdown_pressed_row_ == static_cast<int>(index) ? console_visual_state::pressed
+                          : state_.selected_preset_index() == static_cast<int>(index) ? console_visual_state::selected
+                          : preset_dropdown_hot_row_ == static_cast<int>(index) ? console_visual_state::hot
+                          : console_visual_state::normal;
+        skin_->draw_button(console_layout::preset_dropdown_item(index), console_state::preset_name(index), visual);
+    }
 }
 
 void console_window::draw_fader_filter_menu() {
@@ -776,6 +832,19 @@ void console_window::draw_routing_picker() {
 
 void console_window::update_pointer(POINT client_point) {
     const auto design = to_design(client_point);
+    if (preset_dropdown_open_) {
+        const auto row = preset_dropdown_row(design);
+        if (row != preset_dropdown_hot_row_) {
+            preset_dropdown_hot_row_ = row;
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        if (!tracking_mouse_) {
+            TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window_, 0};
+            TrackMouseEvent(&tracking);
+            tracking_mouse_ = true;
+        }
+        return;
+    }
     if (routing_picker_open_) {
         const auto row = routing_picker_row(design);
         if (row != routing_picker_hot_row_) {
@@ -949,6 +1018,7 @@ void console_window::show_fader_filter_menu(int band, console_point anchor) {
     constexpr float width = 150.0F;
     constexpr float height = filter_menu_header_height + 7.0F + filter_menu_row_height * 7.0F + 21.0F;
     filter_menu_band_ = band;
+    preset_dropdown_open_ = false;
     filter_menu_pressed_row_ = -1;
     filter_menu_hot_row_ = -1;
     filter_menu_rect_.x = clamp(anchor.x + 9.0F, 282.0F, console_design_width - width - 8.0F);
@@ -982,6 +1052,14 @@ int console_window::fader_filter_menu_row(console_point point) const noexcept {
     if (row < 0 || row > filter_menu_toggle_row) return -1;
     const float row_y = first_row + static_cast<float>(row) * filter_menu_row_height;
     return point.y < row_y + filter_menu_row_height - 2.0F ? row : -1;
+}
+
+int console_window::preset_dropdown_row(console_point point) const noexcept {
+    if (!preset_dropdown_open_ || !console_layout::preset_dropdown_frame().contains(point)) return -1;
+    for (std::size_t index = 0; index < console_state::preset_count(); ++index) {
+        if (console_layout::preset_dropdown_item(index).contains(point)) return static_cast<int>(index);
+    }
+    return -1;
 }
 
 int console_window::routing_picker_row(console_point point) const noexcept {
@@ -1021,6 +1099,7 @@ void console_window::sync_profile() {
 
 void console_window::show_routing_picker() {
     filter_menu_band_ = -1;
+    preset_dropdown_open_ = false;
     routing_picker_open_ = true;
     routing_picker_pressed_row_ = -1;
     routing_picker_hot_row_ = -1;
