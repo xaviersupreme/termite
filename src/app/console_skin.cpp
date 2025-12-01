@@ -61,22 +61,41 @@ ID2D1BitmapBrush* checker_pattern(ID2D1RenderTarget* target, bool carbon) {
         return result.Get();
     }
 
-    const std::uint32_t base = carbon ? 0xFF121314U : 0xFF171819U;
-    const std::uint32_t shadow = carbon ? 0xFF0D0E0FU : 0xFF141516U;
-    const std::uint32_t thread = carbon ? 0xFF1C1D1EU : 0xFF222324U;
     std::array<std::uint32_t, 64> pixels{};
-    for (std::size_t y = 0; y < 8; ++y) {
-        for (std::size_t x = 0; x < 8; ++x) {
-            const auto forward = (x + 8U - y) % 8U;
-            const auto backward = (x + y) % 8U;
-            pixels[y * 8U + x] = (forward == 0U || backward == 0U) ? thread :
-                                (forward == 4U || backward == 4U) ? shadow : base;
+    D2D1_SIZE_U pattern_size{};
+    if (carbon) {
+        // Exact 6x6 grayscale repeat measured from the supplied vsound swatch.
+        constexpr std::array<std::uint8_t, 36> vsound_weave{
+            0x25, 0x25, 0x25, 0x25, 0x25, 0x25,
+            0x2A, 0x26, 0x21, 0x21, 0x25, 0x2A,
+            0x2E, 0x29, 0x22, 0x22, 0x27, 0x2D,
+            0x25, 0x25, 0x24, 0x24, 0x25, 0x25,
+            0x21, 0x24, 0x29, 0x2A, 0x26, 0x21,
+            0x22, 0x27, 0x2D, 0x2E, 0x29, 0x22,
+        };
+        pattern_size = D2D1::SizeU(6, 6);
+        for (std::size_t index = 0; index < vsound_weave.size(); ++index) {
+            const auto value = static_cast<std::uint32_t>(vsound_weave[index]);
+            pixels[index] = 0xFF000000U | value | (value << 8U) | (value << 16U);
+        }
+    } else {
+        constexpr std::uint32_t base = 0xFF171819U;
+        constexpr std::uint32_t shadow = 0xFF141516U;
+        constexpr std::uint32_t thread = 0xFF222324U;
+        pattern_size = D2D1::SizeU(8, 8);
+        for (std::size_t y = 0; y < 8; ++y) {
+            for (std::size_t x = 0; x < 8; ++x) {
+                const auto forward = (x + 8U - y) % 8U;
+                const auto backward = (x + y) % 8U;
+                pixels[y * 8U + x] = (forward == 0U || backward == 0U) ? thread :
+                                     (forward == 4U || backward == 4U) ? shadow : base;
+            }
         }
     }
 
     Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
     const auto properties = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
-    if (FAILED(target->CreateBitmap(D2D1::SizeU(8, 8), pixels.data(), 8U * sizeof(std::uint32_t), properties, &bitmap))) {
+    if (FAILED(target->CreateBitmap(pattern_size, pixels.data(), pattern_size.width * sizeof(std::uint32_t), properties, &bitmap))) {
         return nullptr;
     }
     const auto brush_properties = D2D1::BitmapBrushProperties(D2D1_EXTEND_MODE_WRAP, D2D1_EXTEND_MODE_WRAP, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
@@ -235,7 +254,7 @@ void console_skin::draw_graph_surface(console_rect bounds) const {
     target_->DrawRectangle(frame, brush(D2D1::ColorF(0.20F, 0.22F, 0.23F)));
 }
 
-void console_skin::draw_group(console_rect bounds, console_rect label_gap) const {
+void console_skin::draw_group(console_rect bounds) const {
     if (target_ == nullptr || bounds.width <= 2.0F || bounds.height <= 2.0F) {
         return;
     }
@@ -249,15 +268,6 @@ void console_skin::draw_group(console_rect bounds, console_rect label_gap) const
     const auto inner_round = D2D1::RoundedRect(inner, 3.0F, 3.0F);
     target_->DrawRoundedRectangle(inner_round, brush(D2D1::ColorF(0.28F, 0.30F, 0.31F, 0.48F)));
 
-    if (label_gap.width > 0.0F) {
-        const console_rect seam_gap{
-            std::max(bounds.x + 5.0F, label_gap.x - 3.0F),
-            bounds.y - 2.0F,
-            std::min(label_gap.width + 6.0F, bounds.right() - label_gap.x - 2.0F),
-            5.0F,
-        };
-        draw_checker(seam_gap, true);
-    }
 }
 
 void console_skin::draw_combo_box(console_rect bounds, std::wstring_view label, bool open, console_visual_state state) const {
