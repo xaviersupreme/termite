@@ -460,6 +460,11 @@ void console_skin::draw_fader(console_rect up_button,
     draw_chevron(down_button, false);
     draw_panel(track);
     const auto frame = rect(track);
+    // A slider track is a dark slot, not a generic inset panel.  Cover the
+    // panel's light right bevel so it cannot peek out beside the thumb.
+    target_->DrawLine(D2D1::Point2F(frame.right - 1.0F, frame.top + 1.0F),
+                      D2D1::Point2F(frame.right - 1.0F, frame.bottom - 1.0F),
+                      brush(D2D1::ColorF(0.012F, 0.014F, 0.016F, 0.96F)));
     const float center = (frame.top + frame.bottom) * 0.5F;
     const auto rail = D2D1::RectF(frame.left + 7.0F, frame.top + 2.0F, frame.right - 7.0F, frame.bottom - 2.0F);
     target_->FillRectangle(rail, brush(D2D1::ColorF(0.012F, 0.014F, 0.016F, 0.90F)));
