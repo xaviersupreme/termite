@@ -15,13 +15,16 @@ struct audio_session_info {
 struct routing_candidate {
     std::wstring executable_path;
     std::wstring display_name;
-    std::size_t active_session_count{};
+    std::size_t open_window_count{};
     bool routed_to_cable{};
 };
 
 class session_router {
 public:
     [[nodiscard]] std::vector<audio_session_info> active_sessions() const;
+    [[nodiscard]] std::vector<routing_candidate> open_apps() const;
+    // Retained for existing callers. Candidates are now discovered from open app windows,
+    // rather than active audio sessions.
     [[nodiscard]] std::vector<routing_candidate> eligible_sessions() const;
     [[nodiscard]] bool route_to_cable(const audio_session_info& session, std::wstring& failure_reason) const;
     static void open_manual_routing_settings();

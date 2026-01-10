@@ -21,6 +21,15 @@ bool has_system_path(const std::wstring& path) {
            value.find(L"\\programdata\\") != std::wstring::npos;
 }
 
+bool is_background_window_host(const std::wstring& executable_path) {
+    const auto name = lower(std::filesystem::path(executable_path).filename().wstring());
+    constexpr std::array<std::wstring_view, 7> names{
+        L"applicationframehost.exe", L"textinputhost.exe", L"searchhost.exe", L"shellexperiencehost.exe",
+        L"startmenuexperiencehost.exe", L"widgetservice.exe", L"lockapp.exe",
+    };
+    return std::find(names.begin(), names.end(), name) != names.end();
+}
+
 }  // namespace
 
 bool is_known_user_facing_executable(const std::wstring& executable_path) {
@@ -36,6 +45,11 @@ bool is_eligible_routing_process(const routing_process_metadata& process) {
     return process.process_id != 0 && process.active_audio && !process.system_sounds && process.current_user_session &&
            !process.executable_path.empty() && !has_system_path(process.executable_path) &&
            (process.has_visible_window || is_known_user_facing_executable(process.executable_path));
+}
+
+bool is_eligible_open_app(const open_app_metadata& app) {
+    return app.process_id != 0 && app.current_user_session && app.has_visible_top_level_window &&
+           !app.executable_path.empty() && !is_background_window_host(app.executable_path);
 }
 
 std::wstring normalized_executable_key(const std::wstring& executable_path) {

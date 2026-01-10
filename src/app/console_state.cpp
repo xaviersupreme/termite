@@ -66,7 +66,7 @@ console_action_result console_state::activate(console_control control) {
         case console_control::hardware_menu:
         case console_control::help_menu:
         case console_control::route_apps:
-            append_notice(L"Choose active apps, then set their output to CABLE Input in Volume Mixer.");
+            append_notice(L"Choose open apps, then set their output to CABLE Input in Volume Mixer.");
             result.open_routing = true;
             break;
         case console_control::file_menu:
