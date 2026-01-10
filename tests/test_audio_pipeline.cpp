@@ -124,6 +124,18 @@ void test_routing_policy() {
     assert(termite::is_eligible_routing_process(browser));
     browser.system_sounds = true;
     assert(!termite::is_eligible_routing_process(browser));
+
+    termite::open_app_metadata open_app{4242, true, true, L"C:\\Apps\\Player.exe"};
+    assert(termite::is_eligible_open_app(open_app));
+    open_app.has_visible_top_level_window = false;
+    assert(!termite::is_eligible_open_app(open_app));
+    open_app.has_visible_top_level_window = true;
+    open_app.current_user_session = false;
+    assert(!termite::is_eligible_open_app(open_app));
+    open_app.current_user_session = true;
+    open_app.executable_path = L"C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\TextInputHost.exe";
+    assert(!termite::is_eligible_open_app(open_app));
+
     assert(termite::normalized_executable_key(L"C:\\Apps\\PLAYER.EXE") == L"c:\\apps\\player.exe");
     assert(termite::executable_display_name(L"C:\\Apps\\Player.exe") == L"Player");
 }

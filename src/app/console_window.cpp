@@ -134,7 +134,7 @@ bool console_window::create_window() {
     window_ = CreateWindowExW(WS_EX_APPWINDOW,
                               window_class_name,
                               L"Termite",
-                              WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX,
+                              WS_POPUP | WS_MINIMIZEBOX,
                               left,
                               top,
                               width,
@@ -793,27 +793,26 @@ void console_window::draw_routing_picker() {
     const auto visible = console_layout::routing_picker_visible_rows(routing_candidates_.size());
     const auto last = std::min(routing_candidates_.size(), routing_picker_first_item_ + visible);
     const auto count_text = routing_candidates_.empty()
-                                ? L"No eligible active apps"
+                                ? L"No eligible open apps"
                                 : std::format(L"Route apps  ({}-{} of {})", routing_picker_first_item_ + 1, last, routing_candidates_.size());
     skin_->draw_text(count_text, {frame.x + 8.0F, frame.y + 5.0F, frame.width - 16.0F, routing_picker_header_height - 2.0F},
                      console_text_style::title, DWRITE_TEXT_ALIGNMENT_CENTER);
-    skin_->draw_text(L"Select active apps. Routing is manual in Windows Volume Mixer.",
+    skin_->draw_text(L"Select open apps. Routing is manual in Windows Volume Mixer.",
                      {frame.x + 9.0F, frame.y + routing_picker_header_height, frame.width - 18.0F, routing_picker_instruction_height},
                      console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
 
     if (routing_candidates_.empty()) {
         const auto row = console_layout::routing_picker_row(0, 0);
         skin_->draw_panel(row);
-        skin_->draw_text(L"Start playback in an app, then press Refresh.", row, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+        skin_->draw_text(L"Open an app with a visible window, then press Refresh.", row, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     } else {
         for (std::size_t visible_index = 0; visible_index < visible && routing_picker_first_item_ + visible_index < routing_candidates_.size(); ++visible_index) {
             const auto index = routing_picker_first_item_ + visible_index;
             const auto row = console_layout::routing_picker_row(routing_candidates_.size(), visible_index);
             if (routing_picker_hot_row_ == static_cast<int>(index)) skin_->draw_panel(row, true);
             const auto& candidate = routing_candidates_[index];
-            const auto suffix = std::format(L"  ({} session{}){}", candidate.active_session_count,
-                                            candidate.active_session_count == 1 ? L"" : L"s",
-                                            candidate.routed_to_cable ? L"  • CABLE Input" : L"");
+            const auto suffix = std::format(L"  ({} open window{})", candidate.open_window_count,
+                                            candidate.open_window_count == 1 ? L"" : L"s");
             skin_->draw_checkbox(row, routing_selected_[index], candidate.display_name + suffix);
         }
     }
@@ -1111,7 +1110,7 @@ void console_window::refresh_routing_picker() {
     for (std::size_t index = 0; index < routing_candidates_.size() && index < routing_selected_.size(); ++index) {
         if (routing_selected_[index]) selected_paths.push_back(routing_candidates_[index].executable_path);
     }
-    routing_candidates_ = session_router_.eligible_sessions();
+    routing_candidates_ = session_router_.open_apps();
     routing_selected_.assign(routing_candidates_.size(), false);
     for (std::size_t index = 0; index < routing_candidates_.size(); ++index) {
         routing_selected_[index] = std::any_of(selected_paths.begin(), selected_paths.end(), [this, index](const std::wstring& selected) {
@@ -1121,7 +1120,7 @@ void console_window::refresh_routing_picker() {
     const auto visible = console_layout::routing_picker_visible_rows(routing_candidates_.size());
     const auto maximum = routing_candidates_.size() > visible ? routing_candidates_.size() - visible : 0U;
     routing_picker_first_item_ = std::min(routing_picker_first_item_, maximum);
-    state_.append_engine_status(std::format("{} eligible active app(s) found.", routing_candidates_.size()));
+    state_.append_engine_status(std::format("{} eligible open app(s) found.", routing_candidates_.size()));
 }
 
 void console_window::open_selected_routing_settings() {
@@ -1133,7 +1132,7 @@ void console_window::open_selected_routing_settings() {
                                                  narrow(routing_candidates_[index].display_name)));
     }
     if (selected == 0) {
-        state_.append_engine_status("Select one or more active apps before opening Volume Mixer.");
+        state_.append_engine_status("Select one or more open apps before opening Volume Mixer.");
         return;
     }
     state_.append_engine_status("Selection is routing guidance; CABLE Input mixes every manually routed source.");
