@@ -1,4 +1,5 @@
 #include "app/console_window.h"
+#include "app/termite_resource.h"
 
 #include <algorithm>
 #include <array>
@@ -18,6 +19,8 @@ constexpr wchar_t window_class_name[] = L"TermiteConsoleWindow";
 constexpr UINT_PTR status_timer_id = 1;
 constexpr int fader_edit_control_id = 1001;
 constexpr DWORD dark_mode_attribute = 20;
+constexpr DWORD window_corner_preference_attribute = 33;
+constexpr int round_window_corners = 2;
 constexpr float filter_menu_header_height = 22.0F;
 constexpr float filter_menu_row_height = 19.0F;
 constexpr int filter_menu_shape_rows = 6;
@@ -113,7 +116,8 @@ bool console_window::create_window() {
     definition.lpfnWndProc = &console_window::window_proc;
     definition.hInstance = instance_;
     definition.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    definition.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    definition.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_TERMITE));
+    definition.hIconSm = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_TERMITE));
     definition.lpszClassName = window_class_name;
     if (RegisterClassExW(&definition) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
         return false;
@@ -149,6 +153,8 @@ bool console_window::create_window() {
 
     const BOOL dark_mode = TRUE;
     DwmSetWindowAttribute(window_, dark_mode_attribute, &dark_mode, sizeof(dark_mode));
+    DwmSetWindowAttribute(window_, window_corner_preference_attribute, &round_window_corners, sizeof(round_window_corners));
+    update_window_region();
     SetTimer(window_, status_timer_id, 700, nullptr);
     return true;
 }
@@ -243,6 +249,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
             return 0;
         }
         case WM_SIZE:
+            update_window_region();
             if (render_target_ != nullptr) {
                 render_target_->Resize(D2D1::SizeU(LOWORD(lparam), HIWORD(lparam)));
             }
@@ -483,6 +490,19 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         default:
             return DefWindowProcW(window_, message, wparam, lparam);
     }
+}
+
+void console_window::update_window_region() {
+    if (window_ == nullptr) return;
+    RECT area{};
+    GetClientRect(window_, &area);
+    const auto width = area.right - area.left;
+    const auto height = area.bottom - area.top;
+    if (width <= 0 || height <= 0) return;
+
+    const auto corner_diameter = std::max(6, static_cast<int>(std::lround(scale() * 14.0F)));
+    const auto region = CreateRoundRectRgn(0, 0, width + 1, height + 1, corner_diameter, corner_diameter);
+    if (region != nullptr) SetWindowRgn(window_, region, TRUE);
 }
 
 LRESULT console_window::hit_test_screen(POINT screen_point) const {
@@ -742,7 +762,7 @@ void console_window::draw_bottom_controls() {
 void console_window::draw_preset_dropdown() {
     if (!preset_dropdown_open_) return;
     const auto frame = console_layout::preset_dropdown_frame();
-    skin_->draw_panel(frame, true);
+    skin_->draw_popup(frame);
     for (std::size_t index = 0; index < console_state::preset_count(); ++index) {
         const auto visual = preset_dropdown_pressed_row_ == static_cast<int>(index) ? console_visual_state::pressed
                           : state_.selected_preset_index() == static_cast<int>(index) ? console_visual_state::selected
@@ -755,7 +775,7 @@ void console_window::draw_preset_dropdown() {
 void console_window::draw_fader_filter_menu() {
     if (filter_menu_band_ < 0 || filter_menu_band_ >= static_cast<int>(graphic_band_count)) return;
     const auto& band = state_.profile().bands[static_cast<std::size_t>(filter_menu_band_)];
-    skin_->draw_group(filter_menu_rect_);
+    skin_->draw_popup(filter_menu_rect_);
     skin_->draw_panel({filter_menu_rect_.x + 4.0F, filter_menu_rect_.y + 4.0F, filter_menu_rect_.width - 8.0F, filter_menu_header_height}, true);
     skin_->draw_text(std::format(L"BAND {:02}  {:.0f} Hz  Q {:.1f}", filter_menu_band_ + 1, band.frequency_hz, band.q),
                      {filter_menu_rect_.x + 6.0F, filter_menu_rect_.y + 5.0F, filter_menu_rect_.width - 12.0F, filter_menu_header_height - 2.0F},
@@ -788,7 +808,7 @@ void console_window::draw_routing_picker() {
     if (!routing_picker_open_) return;
 
     const auto frame = console_layout::routing_picker_frame(routing_candidates_.size());
-    skin_->draw_group(frame);
+    skin_->draw_popup(frame);
     skin_->draw_panel({frame.x + 4.0F, frame.y + 4.0F, frame.width - 8.0F, routing_picker_header_height}, true);
     const auto visible = console_layout::routing_picker_visible_rows(routing_candidates_.size());
     const auto last = std::min(routing_candidates_.size(), routing_picker_first_item_ + visible);

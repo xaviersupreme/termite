@@ -51,6 +51,7 @@ private:
     void begin_fader_edit(int index);
     void finish_fader_edit(bool commit);
     void position_fader_edit();
+    void update_window_region();
     void update_scroll_from_point(console_point point);
     void show_fader_filter_menu(int band, console_point anchor);
     void execute_fader_filter_menu_row(int row);

@@ -270,6 +270,22 @@ void console_skin::draw_group(console_rect bounds) const {
 
 }
 
+void console_skin::draw_popup(console_rect bounds) const {
+    if (target_ == nullptr || bounds.width <= 2.0F || bounds.height <= 2.0F) {
+        return;
+    }
+
+    const auto frame = rect(bounds);
+    const auto outer = D2D1::RoundedRect(frame, 4.0F, 4.0F);
+    target_->FillRoundedRectangle(outer, brush(D2D1::ColorF(0.006F, 0.007F, 0.008F)));
+    target_->DrawRoundedRectangle(outer, brush(D2D1::ColorF(0.0F, 0.0F, 0.0F)));
+
+    const auto inner = D2D1::RectF(frame.left + 1.0F, frame.top + 1.0F, frame.right - 1.0F, frame.bottom - 1.0F);
+    const auto inner_round = D2D1::RoundedRect(inner, 3.0F, 3.0F);
+    target_->FillRoundedRectangle(inner_round, brush(D2D1::ColorF(0.055F, 0.059F, 0.063F)));
+    target_->DrawRoundedRectangle(inner_round, brush(D2D1::ColorF(0.25F, 0.27F, 0.28F)));
+}
+
 void console_skin::draw_combo_box(console_rect bounds, std::wstring_view label, bool open, console_visual_state state) const {
     if (target_ == nullptr) return;
     draw_panel(bounds);
