@@ -104,6 +104,7 @@ void test_graph_and_equalizer_alignment() {
 }
 
 void test_derived_console_geometry() {
+    const auto graph = termite::console_layout::graph_frame();
     const auto plot = termite::console_layout::graph_plot();
     const auto fader_bank = termite::console_layout::fader_bank();
     const auto first_track = termite::console_layout::fader_track(0);
@@ -111,7 +112,8 @@ void test_derived_console_geometry() {
     assert(std::abs(first_track.x - fader_bank.x) < 0.001F);
     assert(std::abs(last_track.right() - fader_bank.right()) < 0.001F);
     assert(fader_bank.x > plot.x);
-    assert(std::abs(fader_bank.right() - plot.right()) < 0.001F);
+    assert(fader_bank.right() < plot.right());
+    assert(std::abs((fader_bank.x + fader_bank.width * 0.5F) - (graph.x + graph.width * 0.5F)) < 0.001F);
     for (std::size_t index = 0; index < termite::console_fader_count; ++index) {
         const auto up = termite::console_layout::fader_up(index);
         const auto track = termite::console_layout::fader_track(index);

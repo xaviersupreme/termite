@@ -41,6 +41,7 @@ public:
     void draw_panel(console_rect rect, bool raised = false) const;
     void draw_graph_surface(console_rect rect) const;
     void draw_group(console_rect rect) const;
+    void draw_popup(console_rect rect) const;
     void draw_combo_box(console_rect rect, std::wstring_view label, bool open, console_visual_state state) const;
     void draw_button(console_rect rect, std::wstring_view label, console_visual_state state) const;
     void draw_caption_button(console_rect rect, std::wstring_view label, console_visual_state state) const;

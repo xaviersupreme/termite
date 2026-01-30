@@ -50,6 +50,7 @@ if(TERMITE_BUILD_APP)
         src/app/console_state.h
         src/app/console_window.cpp
         src/app/console_window.h
+        src/app/termite.rc
         src/audio/wasapi_audio_engine.cpp
         src/audio/wasapi_audio_engine.h
         src/audio/session_router.cpp

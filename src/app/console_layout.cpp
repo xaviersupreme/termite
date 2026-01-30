@@ -44,7 +44,8 @@ constexpr float fader_value_y = fader_down_y + fader_arrow_height + 7.0F;
 // left gutter reserves room for the dB labels before the first fader.
 constexpr float fader_db_gutter = 75.0F;
 constexpr float fader_first_center = graph_box.x + fader_db_gutter + fader_track_width * 0.5F;
-constexpr float fader_last_center = graph_area.x + graph_area.width - fader_track_width * 0.5F;
+// Use equal outer gutters so the fader bank is centered in the equalizer workspace.
+constexpr float fader_last_center = graph_box.x + graph_box.width - fader_db_gutter - fader_track_width * 0.5F;
 constexpr float fader_pitch = (fader_last_center - fader_first_center) / static_cast<float>(console_fader_count - 1);
 constexpr float fader_bank_left = fader_first_center - fader_track_width * 0.5F;
 constexpr float fader_bank_width = fader_last_center + fader_track_width * 0.5F - fader_bank_left;
