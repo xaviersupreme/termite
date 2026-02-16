@@ -28,28 +28,9 @@ float clamp_q(float q) noexcept {
 
 eq_profile eq_profile::flat() noexcept {
     eq_profile profile;
-    profile.bands = {{
-        {filter_shape::peaking, 40.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 55.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 75.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 103.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 141.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 194.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 265.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 364.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 498.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 683.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 937.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 1284.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 1760.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 2412.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 3306.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 4532.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 6213.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 8516.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 11673.0F, 0.0F, 4.32F},
-        {filter_shape::peaking, 16000.0F, 0.0F, 4.32F},
-    }};
+    for (std::size_t index = 0; index < profile.bands.size(); ++index) {
+        profile.bands[index] = {filter_shape::peaking, graphic_band_frequencies[index], 0.0F, 4.32F};
+    }
     return profile;
 }
 

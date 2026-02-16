@@ -7,6 +7,10 @@
 namespace termite {
 
 inline constexpr std::size_t graphic_band_count = 20;
+inline constexpr std::array<float, graphic_band_count> graphic_band_frequencies{
+    40.0F, 55.0F, 75.0F, 103.0F, 141.0F, 194.0F, 265.0F, 364.0F, 498.0F, 683.0F,
+    937.0F, 1284.0F, 1760.0F, 2412.0F, 3306.0F, 4532.0F, 6213.0F, 8516.0F, 11673.0F, 16000.0F,
+};
 
 enum class filter_shape {
     low_shelf,

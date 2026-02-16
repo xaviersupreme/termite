@@ -22,6 +22,9 @@ void test_layout_scaling() {
     assert(fitted.width <= 1120.0F);
     assert(fitted.height <= 629.0F);
     assert(std::abs(fitted.width / fitted.height - termite::console_design_width / termite::console_design_height) < 0.001F);
+
+    const auto enlarged = termite::console_layout::fit_canvas_to_bounds({2000.0F, 1200.0F}, 1.20F);
+    assert(std::abs(enlarged.width - termite::console_design_width * 1.20F) < 0.001F);
 }
 
 void test_hit_testing() {
@@ -121,6 +124,7 @@ void test_derived_console_geometry() {
         const auto value = termite::console_layout::fader_value(index);
         const auto frequency = termite::console_layout::fader_frequency_label(index);
         const auto center = track.x + track.width * 0.5F;
+        assert(std::abs(center - termite::console_layout::graph_x_for_frequency(termite::graphic_band_frequencies[index])) < 0.001F);
         assert(std::abs((up.x + up.width * 0.5F) - center) < 0.001F);
         assert(std::abs((down.x + down.width * 0.5F) - center) < 0.001F);
         assert(std::abs((value.x + value.width * 0.5F) - center) < 0.001F);

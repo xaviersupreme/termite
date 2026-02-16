@@ -57,6 +57,14 @@ if(TERMITE_BUILD_APP)
         src/audio/session_router.h
     )
     target_link_libraries(termite PRIVATE termite_dsp termite_audio_core ole32 uuid avrt shell32 d2d1 dwrite dwmapi windowscodecs user32 gdi32)
+    if(MSVC)
+        # CMake's Visual Studio generator recognizes /MANIFESTUAC as a generic
+        # boolean and otherwise emits the default asInvoker manifest. Import a
+        # small MSBuild property sheet to set the concrete UAC mode instead.
+        set_target_properties(termite PROPERTIES
+            VS_USER_PROPS "${CMAKE_CURRENT_SOURCE_DIR}/src/app/termite_elevation.props"
+        )
+    endif()
     target_compile_definitions(termite PRIVATE
         UNICODE
         _UNICODE

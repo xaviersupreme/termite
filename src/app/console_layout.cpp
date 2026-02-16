@@ -1,4 +1,5 @@
 #include "app/console_layout.h"
+#include "dsp/eq_profile.h"
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,10 @@ constexpr float graph_axis_gutter = 37.0F;
 constexpr console_rect graph_area{graph_box.x + graph_axis_gutter, graph_box.y + 31.0F, graph_box.width - graph_axis_gutter - 10.0F, graph_box.height - 31.0F - 28.0F};
 constexpr console_rect graph_y_axis_box{graph_area.x - 1.0F, graph_area.y, 1.0F, graph_area.height};
 constexpr console_rect graph_x_axis_box{graph_area.x, graph_area.y + graph_area.height, graph_area.width, 1.0F};
+constexpr float graph_frequency_min_hz = 30.0F;
+constexpr float graph_first_band_hz = graphic_band_frequencies.front();
+constexpr float graph_last_band_hz = graphic_band_frequencies.back();
+constexpr float graph_frequency_max_hz = 18000.0F;
 
 constexpr console_rect equalizer_box{37.0F, 400.0F, 112.0F, 59.0F};
 constexpr console_rect blender_box{37.0F, 476.0F, 110.0F, 172.0F};
@@ -46,9 +51,6 @@ constexpr float fader_db_gutter = 75.0F;
 constexpr float fader_first_center = graph_box.x + fader_db_gutter + fader_track_width * 0.5F;
 // Use equal outer gutters so the fader bank is centered in the equalizer workspace.
 constexpr float fader_last_center = graph_box.x + graph_box.width - fader_db_gutter - fader_track_width * 0.5F;
-constexpr float fader_pitch = (fader_last_center - fader_first_center) / static_cast<float>(console_fader_count - 1);
-constexpr float fader_bank_left = fader_first_center - fader_track_width * 0.5F;
-constexpr float fader_bank_width = fader_last_center + fader_track_width * 0.5F - fader_bank_left;
 
 constexpr float bottom_group_top = fader_value_y + fader_value_height + 20.0F;
 constexpr float bottom_group_height = 81.0F;
@@ -89,6 +91,15 @@ constexpr std::array<console_control, 8> left_button_controls{{
     console_control::detect, console_control::reset, console_control::status_sync, console_control::pause,
     console_control::run, console_control::clear_info, console_control::sleep, console_control::default_start,
 }};
+
+float logarithmic_fraction(float value, float low, float high) noexcept {
+    const auto clamped = std::clamp(value, low, high);
+    return std::log(clamped / low) / std::log(high / low);
+}
+
+float fader_center(std::size_t index) noexcept {
+    return console_layout::graph_x_for_frequency(graphic_band_frequencies[std::min(index, graphic_band_frequencies.size() - 1)]);
+}
 
 }  // namespace
 
@@ -170,6 +181,20 @@ console_rect console_layout::graph_frequency_label() noexcept {
     return {graph_area.x + (graph_area.width - label_width) * 0.5F, graph_x_axis_box.y, label_width, 17.0F};
 }
 
+float console_layout::graph_x_for_frequency(float frequency_hz) noexcept {
+    const auto frequency = std::clamp(frequency_hz, graph_frequency_min_hz, graph_frequency_max_hz);
+    if (frequency <= graph_first_band_hz) {
+        const auto fraction = logarithmic_fraction(frequency, graph_frequency_min_hz, graph_first_band_hz);
+        return std::lerp(graph_area.x, fader_first_center, fraction);
+    }
+    if (frequency >= graph_last_band_hz) {
+        const auto fraction = logarithmic_fraction(frequency, graph_last_band_hz, graph_frequency_max_hz);
+        return std::lerp(fader_last_center, graph_area.right(), fraction);
+    }
+    const auto fraction = logarithmic_fraction(frequency, graph_first_band_hz, graph_last_band_hz);
+    return std::lerp(fader_first_center, fader_last_center, fraction);
+}
+
 console_rect console_layout::group_rect(console_group group) noexcept {
     switch (group) {
         case console_group::left_bay: return left_bay_box;
@@ -233,12 +258,12 @@ console_rect console_layout::digital_volume_display() noexcept {
 }
 
 console_rect console_layout::fader_up(std::size_t index) noexcept {
-    const auto center = fader_first_center + static_cast<float>(index) * fader_pitch;
+    const auto center = fader_center(index);
     return {center - fader_arrow_width * 0.5F, fader_up_y, fader_arrow_width, fader_arrow_height};
 }
 
 console_rect console_layout::fader_track(std::size_t index) noexcept {
-    const auto center = fader_first_center + static_cast<float>(index) * fader_pitch;
+    const auto center = fader_center(index);
     return {center - fader_track_width * 0.5F, fader_track_y, fader_track_width, fader_track_height};
 }
 
@@ -248,17 +273,19 @@ console_rect console_layout::fader_down(std::size_t index) noexcept {
 }
 
 console_rect console_layout::fader_value(std::size_t index) noexcept {
-    const auto center = fader_first_center + static_cast<float>(index) * fader_pitch;
+    const auto center = fader_center(index);
     return {center - fader_value_width * 0.5F, fader_value_y, fader_value_width, fader_value_height};
 }
 
 console_rect console_layout::fader_bank() noexcept {
-    return {fader_bank_left, fader_track_y, fader_bank_width, fader_track_height};
+    const auto first = fader_track(0);
+    const auto last = fader_track(console_fader_count - 1);
+    return {first.x, fader_track_y, last.right() - first.x, fader_track_height};
 }
 
 console_rect console_layout::fader_frequency_label(std::size_t index) noexcept {
     constexpr float width = 43.0F;
-    const auto center = fader_first_center + static_cast<float>(index) * fader_pitch;
+    const auto center = fader_center(index);
     return {center - width * 0.5F, fader_up_y - 25.0F, width, 17.0F};
 }
 
@@ -514,7 +541,7 @@ console_size console_layout::fit_canvas_to_bounds(console_size available, float 
     const auto safe_width = std::max(1.0F, available.width);
     const auto safe_height = std::max(1.0F, available.height);
     const auto fit_scale = std::min(safe_width / console_design_width, safe_height / console_design_height);
-    const auto scale = std::clamp(std::min(preferred_scale, fit_scale), 0.1F, 1.0F);
+    const auto scale = std::clamp(preferred_scale, std::min(0.1F, fit_scale), fit_scale);
     return {console_design_width * scale, console_design_height * scale};
 }
 

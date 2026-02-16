@@ -126,11 +126,11 @@ bool console_window::create_window() {
     dpi_ = GetDpiForSystem();
     RECT work_area{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
-    constexpr LONG outer_margin = 24;
+    constexpr LONG outer_margin = 16;
     const auto initial = console_layout::fit_canvas_to_bounds({
         static_cast<float>(std::max(1L, work_area.right - work_area.left - outer_margin * 2)),
         static_cast<float>(std::max(1L, work_area.bottom - work_area.top - outer_margin * 2)),
-    });
+    }, 1.20F);
     const auto width = static_cast<int>(std::lround(initial.width));
     const auto height = static_cast<int>(std::lround(initial.height));
     const auto left = work_area.left + ((work_area.right - work_area.left) - width) / 2;
@@ -663,24 +663,6 @@ void console_window::draw_graph() {
     skin_->draw_panel(graph);
     skin_->draw_text(L"Graphic Equalizer", console_layout::graph_title(), console_text_style::title, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_graph_surface(plot);
-    if (state_.grid_visible()) {
-        for (int line = 1; line < 7; ++line) {
-            const float y = plot.y + static_cast<float>(line) * plot.height / 7.0F;
-            for (float x = plot.x + 5.0F; x < plot.right() - 2.0F; x += 5.0F) {
-                render_target_->DrawLine(D2D1::Point2F(x, y), D2D1::Point2F(x + 1.5F, y), skin_->brush(D2D1::ColorF(0.56F, 0.58F, 0.60F, 0.40F)), 0.65F);
-            }
-        }
-    }
-    const auto y_axis = console_layout::graph_y_axis();
-    const auto x_axis = console_layout::graph_x_axis();
-    render_target_->DrawLine(D2D1::Point2F(y_axis.x, y_axis.y), D2D1::Point2F(y_axis.x, y_axis.bottom()), skin_->brush(D2D1::ColorF(0.84F, 0.85F, 0.86F)), 0.75F);
-    render_target_->DrawLine(D2D1::Point2F(x_axis.x, x_axis.y), D2D1::Point2F(x_axis.right(), x_axis.y), skin_->brush(D2D1::ColorF(0.84F, 0.85F, 0.86F)), 0.75F);
-    const auto gain_label = console_layout::graph_gain_label();
-    skin_->draw_rotated_text(L"dB Gain", gain_label, -90.0F, {gain_label.x + gain_label.width * 0.5F, gain_label.y + 18.0F}, console_text_style::label);
-    skin_->draw_text(L"Frequency, Hz", console_layout::graph_frequency_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
-    skin_->draw_text(L"20 dB", console_layout::graph_db_label(0), console_text_style::label, DWRITE_TEXT_ALIGNMENT_TRAILING);
-    skin_->draw_text(L"0 dB", console_layout::graph_db_label(1), console_text_style::label, DWRITE_TEXT_ALIGNMENT_TRAILING);
-    skin_->draw_text(L"-20 dB", console_layout::graph_db_label(2), console_text_style::label, DWRITE_TEXT_ALIGNMENT_TRAILING);
 
     auto graph_profile = state_.profile();
     graph_profile.preamp_db = 0.0F;
@@ -698,7 +680,7 @@ void console_window::draw_graph() {
         const float fraction = static_cast<float>(index) / static_cast<float>(points);
         const float frequency = 30.0F * std::pow(18000.0F / 30.0F, fraction);
         const float gain = clamp(profile_response_db(graph_profile, 48000.0F, frequency), -20.0F, 20.0F);
-        const float x = plot.x + fraction * plot.width;
+        const float x = console_layout::graph_x_for_frequency(frequency);
         const float y = plot.y + (20.0F - gain) / 40.0F * plot.height;
         sink->AddLine(D2D1::Point2F(x, y));
     }
@@ -708,7 +690,30 @@ void console_window::draw_graph() {
     render_target_->PushAxisAlignedClip(D2D1::RectF(plot.x, plot.y, plot.right(), plot.bottom()), D2D1_ANTIALIAS_MODE_ALIASED);
     render_target_->FillGeometry(response.Get(), skin_->brush(D2D1::ColorF(0.0F, 0.83F, 0.09F, 0.88F)));
     render_target_->DrawGeometry(response.Get(), skin_->brush(D2D1::ColorF(0.17F, 1.0F, 0.24F)), 1.0F);
+    if (state_.grid_visible()) {
+        const auto grid = skin_->brush(D2D1::ColorF(0.49F, 0.53F, 0.56F, 0.62F));
+        for (int gain = -20; gain <= 20; gain += 5) {
+            const float y = plot.y + (20.0F - static_cast<float>(gain)) / 40.0F * plot.height;
+            render_target_->DrawLine(D2D1::Point2F(plot.x, y), D2D1::Point2F(plot.right(), y), grid, gain == 0 ? 1.0F : 0.7F);
+        }
+        for (std::size_t index = 0; index < graphic_band_count; ++index) {
+            const auto track = console_layout::fader_track(index);
+            const float x = track.x + track.width * 0.5F;
+            render_target_->DrawLine(D2D1::Point2F(x, plot.y), D2D1::Point2F(x, plot.bottom()), grid, 0.7F);
+        }
+    }
     render_target_->PopAxisAlignedClip();
+
+    const auto y_axis = console_layout::graph_y_axis();
+    const auto x_axis = console_layout::graph_x_axis();
+    render_target_->DrawLine(D2D1::Point2F(y_axis.x, y_axis.y), D2D1::Point2F(y_axis.x, y_axis.bottom()), skin_->brush(D2D1::ColorF(0.84F, 0.85F, 0.86F)), 0.75F);
+    render_target_->DrawLine(D2D1::Point2F(x_axis.x, x_axis.y), D2D1::Point2F(x_axis.right(), x_axis.y), skin_->brush(D2D1::ColorF(0.84F, 0.85F, 0.86F)), 0.75F);
+    const auto gain_label = console_layout::graph_gain_label();
+    skin_->draw_rotated_text(L"dB Gain", gain_label, -90.0F, {gain_label.x + gain_label.width * 0.5F, gain_label.y + 18.0F}, console_text_style::label);
+    skin_->draw_text(L"Frequency, Hz", console_layout::graph_frequency_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+    skin_->draw_text(L"20 dB", console_layout::graph_db_label(0), console_text_style::label, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    skin_->draw_text(L"0 dB", console_layout::graph_db_label(1), console_text_style::label, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    skin_->draw_text(L"-20 dB", console_layout::graph_db_label(2), console_text_style::label, DWRITE_TEXT_ALIGNMENT_TRAILING);
 }
 
 void console_window::draw_faders() {
