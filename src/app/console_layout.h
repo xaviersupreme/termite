@@ -116,6 +116,7 @@ public:
     [[nodiscard]] static console_rect graph_gain_label() noexcept;
     [[nodiscard]] static console_rect graph_frequency_label() noexcept;
     [[nodiscard]] static console_rect graph_db_label(std::size_t index) noexcept;
+    [[nodiscard]] static float graph_x_for_frequency(float frequency_hz) noexcept;
     [[nodiscard]] static console_rect group_rect(console_group group) noexcept;
     [[nodiscard]] static console_rect equalizer_label() noexcept;
     [[nodiscard]] static console_rect equalizer_toggle() noexcept;
