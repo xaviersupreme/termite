@@ -55,11 +55,6 @@ constexpr float fader_last_center = graph_box.x + graph_box.width - fader_db_gut
 constexpr float bottom_group_top = fader_value_y + fader_value_height + 20.0F;
 constexpr float bottom_group_height = 81.0F;
 constexpr float bottom_group_gap = 6.0F;
-constexpr float bottom_content_left = 426.0F;
-constexpr console_rect profiles_box{bottom_content_left, bottom_group_top, 120.0F, bottom_group_height};
-constexpr console_rect presets_box{profiles_box.x + profiles_box.width + bottom_group_gap, bottom_group_top, 116.0F, bottom_group_height};
-constexpr console_rect smoothing_box{presets_box.x + presets_box.width + bottom_group_gap, bottom_group_top, 185.0F, bottom_group_height};
-constexpr console_rect termite_control_box{smoothing_box.x + smoothing_box.width + bottom_group_gap, bottom_group_top, 219.0F, bottom_group_height};
 
 constexpr std::size_t routing_picker_max_rows = 6;
 constexpr float routing_picker_header_height = 24.0F;
@@ -99,6 +94,15 @@ float logarithmic_fraction(float value, float low, float high) noexcept {
 
 float fader_center(std::size_t index) noexcept {
     return console_layout::graph_x_for_frequency(graphic_band_frequencies[std::min(index, graphic_band_frequencies.size() - 1)]);
+}
+
+console_rect bottom_group_rect(std::size_t first_column, std::size_t last_column) noexcept {
+    const auto first = fader_center(first_column);
+    const auto last = fader_center(last_column);
+    const auto left_boundary = (fader_center(first_column - 1) + first) * 0.5F;
+    const auto right_boundary = (last + fader_center(last_column + 1)) * 0.5F;
+    const float inset = bottom_group_gap * 0.5F;
+    return {left_boundary + inset, bottom_group_top, right_boundary - left_boundary - bottom_group_gap, bottom_group_height};
 }
 
 }  // namespace
@@ -201,10 +205,12 @@ console_rect console_layout::group_rect(console_group group) noexcept {
         case console_group::equalizer: return equalizer_box;
         case console_group::blender: return blender_box;
         case console_group::digital_volume: return digital_volume_box;
-        case console_group::profiles: return profiles_box;
-        case console_group::presets: return presets_box;
-        case console_group::smoothing: return smoothing_box;
-        case console_group::termite_control: return termite_control_box;
+        // Bottom boundaries fall midway between fader columns. This keeps the
+        // group frames on the same shared vertical grid as the EQ itself.
+        case console_group::profiles: return bottom_group_rect(2, 4);
+        case console_group::presets: return bottom_group_rect(5, 7);
+        case console_group::smoothing: return bottom_group_rect(8, 11);
+        case console_group::termite_control: return bottom_group_rect(12, 17);
     }
     return {};
 }
@@ -312,8 +318,9 @@ console_rect console_layout::smoothing_value() noexcept {
     constexpr float display_width = 108.0F;
     constexpr float gap = 7.0F;
     const float content_width = button_width * 2.0F + display_width + gap * 2.0F;
-    const float x = smoothing_box.x + (smoothing_box.width - content_width) * 0.5F;
-    return {x + button_width + gap, smoothing_box.y + 48.0F, display_width, 25.0F};
+    const auto smoothing = group_rect(console_group::smoothing);
+    const float x = smoothing.x + (smoothing.width - content_width) * 0.5F;
+    return {x + button_width + gap, smoothing.y + 48.0F, display_width, 25.0F};
 }
 
 console_rect console_layout::preset_dropdown_frame() noexcept {
@@ -442,23 +449,28 @@ console_rect console_layout::control_rect(console_control control) noexcept {
         }
         case console_control::profile_open: {
             constexpr float button_width = 96.0F;
-            return {profiles_box.x + (profiles_box.width - button_width) * 0.5F, profiles_box.y + 16.0F, button_width, 25.0F};
+            const auto profiles = group_rect(console_group::profiles);
+            return {profiles.x + (profiles.width - button_width) * 0.5F, profiles.y + 16.0F, button_width, 25.0F};
         }
         case console_control::profile_save: {
             constexpr float button_width = 96.0F;
-            return {profiles_box.x + (profiles_box.width - button_width) * 0.5F, profiles_box.y + 48.0F, button_width, 25.0F};
+            const auto profiles = group_rect(console_group::profiles);
+            return {profiles.x + (profiles.width - button_width) * 0.5F, profiles.y + 48.0F, button_width, 25.0F};
         }
         case console_control::preset_zero: {
             constexpr float button_width = 96.0F;
-            return {presets_box.x + (presets_box.width - button_width) * 0.5F, presets_box.y + 16.0F, button_width, 25.0F};
+            const auto presets = group_rect(console_group::presets);
+            return {presets.x + (presets.width - button_width) * 0.5F, presets.y + 16.0F, button_width, 25.0F};
         }
         case console_control::preset_cycle: {
             constexpr float button_width = 96.0F;
-            return {presets_box.x + (presets_box.width - button_width) * 0.5F, presets_box.y + 48.0F, button_width, 25.0F};
+            const auto presets = group_rect(console_group::presets);
+            return {presets.x + (presets.width - button_width) * 0.5F, presets.y + 48.0F, button_width, 25.0F};
         }
         case console_control::smoothing_reset: {
             constexpr float button_width = 70.0F;
-            return {smoothing_box.x + (smoothing_box.width - button_width) * 0.5F, smoothing_box.y + 16.0F, button_width, 25.0F};
+            const auto smoothing = group_rect(console_group::smoothing);
+            return {smoothing.x + (smoothing.width - button_width) * 0.5F, smoothing.y + 16.0F, button_width, 25.0F};
         }
         case console_control::smoothing_decrease: {
             constexpr float button_width = 16.0F;
@@ -475,22 +487,26 @@ console_rect console_layout::control_rect(console_control control) noexcept {
         case console_control::route_apps: {
             constexpr float inset = 12.0F;
             constexpr float gap = 6.0F;
-            const float width = (termite_control_box.width - inset * 2.0F - gap) * 0.5F;
-            return {termite_control_box.x + inset, termite_control_box.y + 16.0F, width, 25.0F};
+            const auto termite_control = group_rect(console_group::termite_control);
+            const float width = (termite_control.width - inset * 2.0F - gap) * 0.5F;
+            return {termite_control.x + inset, termite_control.y + 16.0F, width, 25.0F};
         }
         case console_control::export_response: {
             constexpr float inset = 12.0F;
             constexpr float gap = 6.0F;
-            const float width = (termite_control_box.width - inset * 2.0F - gap) * 0.5F;
-            return {termite_control_box.x + inset + width + gap, termite_control_box.y + 16.0F, width, 25.0F};
+            const auto termite_control = group_rect(console_group::termite_control);
+            const float width = (termite_control.width - inset * 2.0F - gap) * 0.5F;
+            return {termite_control.x + inset + width + gap, termite_control.y + 16.0F, width, 25.0F};
         }
         case console_control::grid: {
             constexpr float utility_gap = 8.0F;
-            return {termite_control_box.x + termite_control_box.width + utility_gap, termite_control_box.y + 16.0F, 70.0F, 25.0F};
+            const auto termite_control = group_rect(console_group::termite_control);
+            return {termite_control.right() + utility_gap, termite_control.y + 16.0F, 70.0F, 25.0F};
         }
         case console_control::help_button: {
             constexpr float utility_gap = 8.0F;
-            return {termite_control_box.x + termite_control_box.width + utility_gap, termite_control_box.y + 48.0F, 70.0F, 25.0F};
+            const auto termite_control = group_rect(console_group::termite_control);
+            return {termite_control.right() + utility_gap, termite_control.y + 48.0F, 70.0F, 25.0F};
         }
         default: return {};
     }
