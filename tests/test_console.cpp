@@ -149,11 +149,20 @@ void test_derived_console_geometry() {
     assert(std::abs((presets.x - profiles.right()) - 6.0F) < 0.001F);
     assert(std::abs((smoothing.x - presets.right()) - 6.0F) < 0.001F);
     assert(std::abs((control.x - smoothing.right()) - 6.0F) < 0.001F);
+    const auto fader_center = [](std::size_t index) {
+        const auto track = termite::console_layout::fader_track(index);
+        return track.x + track.width * 0.5F;
+    };
+    assert(std::abs((profiles.right() + presets.x) * 0.5F - (fader_center(4) + fader_center(5)) * 0.5F) < 0.001F);
+    assert(std::abs((presets.right() + smoothing.x) * 0.5F - (fader_center(7) + fader_center(8)) * 0.5F) < 0.001F);
+    assert(std::abs((smoothing.right() + control.x) * 0.5F - (fader_center(11) + fader_center(12)) * 0.5F) < 0.001F);
 
     const auto smoothing_reset = termite::console_layout::control_rect(termite::console_control::smoothing_reset);
     assert(std::abs((smoothing_reset.x + smoothing_reset.width * 0.5F) - (smoothing.x + smoothing.width * 0.5F)) < 0.001F);
     const auto grid = termite::console_layout::control_rect(termite::console_control::grid);
     assert(grid.x >= control.right());
+    assert(grid.right() <= fader_bank.right());
+    assert(fader_bank.right() - grid.right() < 1.0F);
     const auto detect = termite::console_layout::control_rect(termite::console_control::detect);
     const auto reset = termite::console_layout::control_rect(termite::console_control::reset);
     const auto sync = termite::console_layout::control_rect(termite::console_control::status_sync);
