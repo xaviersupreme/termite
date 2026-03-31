@@ -1,5 +1,6 @@
 #include "app/console_layout.h"
 #include "app/console_state.h"
+#include "app/settings_store.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -7,6 +8,8 @@
 
 #include <cassert>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 namespace {
 
@@ -192,6 +195,55 @@ void test_derived_console_geometry() {
         assert(item.x >= preset_popup.x && item.right() <= preset_popup.right());
         assert(item.y >= preset_popup.y && item.bottom() <= preset_popup.bottom());
     }
+
+    const auto diagnostics = termite::console_layout::hardware_diagnostics_frame();
+    assert(diagnostics.width > 0.0F && diagnostics.height > 0.0F);
+    assert(diagnostics.x >= graph.x && diagnostics.right() <= graph.right());
+}
+
+void test_settings_store() {
+    const auto path = std::filesystem::temp_directory_path() / "termite-settings-test.json";
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    termite::settings_store store(path);
+    termite::termite_settings settings;
+    settings.console.profile.bands[4].gain_db = 7.5F;
+    settings.console.profile.bands[4].q = 2.3F;
+    settings.console.wet_mix = 35;
+    settings.console.dry_mix = 65;
+    settings.console.grid_visible = false;
+    settings.window = {120, 80, 1245, 700, true};
+    settings.routing_executables = {L"C:\\Apps\\Player.exe", L"C:\\Apps\\Browser.exe"};
+    std::wstring failure;
+    assert(store.save(settings, failure));
+    const auto loaded = store.load();
+    assert(loaded.loaded);
+    assert(std::abs(loaded.settings.console.profile.bands[4].gain_db - 7.5F) < 0.001F);
+    assert(std::abs(loaded.settings.console.profile.bands[4].q - 2.3F) < 0.001F);
+    assert(!loaded.settings.console.grid_visible);
+    assert(loaded.settings.window.valid);
+    assert(loaded.settings.routing_executables.size() == 2);
+
+    settings.console.profile.bands[4].gain_db = 999.0F;
+    settings.console.profile.bands[4].q = 99.0F;
+    settings.console.profile.preamp_db = -99.0F;
+    settings.console.profile.limiter_ceiling_db = 8.0F;
+    assert(store.save(settings, failure));
+    const auto clamped = store.load();
+    assert(clamped.loaded);
+    assert(clamped.settings.console.profile.bands[4].gain_db == 20.0F);
+    assert(clamped.settings.console.profile.bands[4].q == 12.0F);
+    assert(clamped.settings.console.profile.preamp_db == -24.0F);
+    assert(clamped.settings.console.profile.limiter_ceiling_db == 0.0F);
+
+    {
+        std::ofstream corrupt(path, std::ios::trunc);
+        corrupt << "not json";
+    }
+    const auto corrupt = store.load();
+    assert(!corrupt.loaded);
+    assert(!corrupt.notice.empty());
+    std::filesystem::remove(path, error);
 }
 
 void test_display_layout_centering() {
@@ -254,6 +306,9 @@ void test_console_commands() {
 
     const auto route = state.activate(termite::console_control::route_apps);
     assert(route.open_routing);
+    const auto hardware = state.activate(termite::console_control::hardware_menu);
+    assert(hardware.open_diagnostics);
+    assert(!hardware.open_routing);
 }
 
 void test_every_visible_command() {
@@ -309,6 +364,7 @@ int main() {
     test_title_and_menu_alignment();
     test_graph_and_equalizer_alignment();
     test_derived_console_geometry();
+    test_settings_store();
     test_display_layout_centering();
     test_console_commands();
     test_every_visible_command();

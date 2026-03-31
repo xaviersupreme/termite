@@ -48,6 +48,8 @@ if(TERMITE_BUILD_APP)
         src/app/console_skin.h
         src/app/console_state.cpp
         src/app/console_state.h
+        src/app/settings_store.cpp
+        src/app/settings_store.h
         src/app/console_window.cpp
         src/app/console_window.h
         src/app/termite.rc
@@ -99,8 +101,9 @@ if(TERMITE_BUILD_TESTS)
         tests/test_console.cpp
         src/app/console_layout.cpp
         src/app/console_state.cpp
+        src/app/settings_store.cpp
     )
-    target_link_libraries(termite_ui_tests PRIVATE termite_dsp)
+    target_link_libraries(termite_ui_tests PRIVATE termite_dsp shell32)
     target_include_directories(termite_ui_tests PRIVATE src)
     add_test(NAME termite_ui_tests COMMAND termite_ui_tests)
 

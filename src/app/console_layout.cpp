@@ -379,6 +379,10 @@ console_rect console_layout::routing_picker_close_button(std::size_t candidate_c
     return {frame.right() - 68.0F, frame.bottom() - 29.0F, 60.0F, 23.0F};
 }
 
+console_rect console_layout::hardware_diagnostics_frame() noexcept {
+    return {graph_box.x + 72.0F, graph_box.y + 23.0F, graph_box.width - 144.0F, 168.0F};
+}
+
 float console_layout::snap_fader_gain(float gain_db) noexcept {
     return std::clamp(std::round(gain_db), -20.0F, 20.0F);
 }

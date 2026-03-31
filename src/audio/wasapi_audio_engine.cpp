@@ -177,6 +177,8 @@ struct stream_session {
     drift_controller drift;
     channel_mapper mapper;
     std::vector<float> capture_scratch;
+    std::vector<float> active_dsp_scratch;
+    std::vector<float> pending_dsp_scratch;
     std::vector<float> resample_scratch;
     std::vector<float> render_scratch;
     std::atomic<bool> render_primed{};
@@ -280,6 +282,7 @@ bool wasapi_audio_engine::start() {
     render_underflows_ = 0;
     restart_count_ = 0;
     ring_fill_frames_ = 0;
+    target_fill_frames_ = 0;
     set_status(state_text(engine_state::starting), engine_state::starting);
     audio_thread_ = std::thread(&wasapi_audio_engine::audio_loop, this);
     return true;
@@ -294,6 +297,7 @@ void wasapi_audio_engine::stop() {
     if (auto* event = static_cast<HANDLE>(recovery_event_.exchange(nullptr, std::memory_order_acq_rel)); event != nullptr) CloseHandle(event);
     running_ = false;
     ring_fill_frames_ = 0;
+    target_fill_frames_ = 0;
     set_status(state_text(engine_state::stopped), engine_state::stopped);
 }
 
@@ -314,6 +318,7 @@ audio_diagnostics wasapi_audio_engine::diagnostics() const {
     const std::scoped_lock lock(status_mutex_);
     auto result = diagnostics_;
     result.ring_fill_frames = ring_fill_frames_.load(std::memory_order_acquire);
+    result.target_fill_frames = target_fill_frames_.load(std::memory_order_acquire);
     result.capture_overflows = capture_overflows_.load(std::memory_order_acquire);
     result.render_underflows = render_underflows_.load(std::memory_order_acquire);
     result.restart_count = restart_count_.load(std::memory_order_acquire);
@@ -525,7 +530,10 @@ bool wasapi_audio_engine::run_stream() {
         return false;
     }
     session.drift.configure(session.capture_format.sample_rate);
+    target_fill_frames_.store(session.drift.target_frames(), std::memory_order_release);
     session.capture_scratch.assign(static_cast<std::size_t>(session.capture_buffer_frames) * session.capture_format.channels, 0.0F);
+    session.active_dsp_scratch.assign(static_cast<std::size_t>(session.capture_buffer_frames) * session.capture_format.channels, 0.0F);
+    session.pending_dsp_scratch.assign(static_cast<std::size_t>(session.capture_buffer_frames) * session.capture_format.channels, 0.0F);
     session.resample_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * session.capture_format.channels, 0.0F);
     session.render_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * session.render_format.channels, 0.0F);
 
@@ -545,6 +553,7 @@ bool wasapi_audio_engine::run_stream() {
     session.capture_client->Stop();
     session.render_client->Stop();
     ring_fill_frames_ = 0;
+    target_fill_frames_ = 0;
 
     if (session.failed.load(std::memory_order_acquire)) {
         set_stream_diagnostics(session, engine_state::recovering, hresult_text(session.failure_result.load(std::memory_order_acquire)));
@@ -561,8 +570,13 @@ void wasapi_audio_engine::capture_worker(stream_session& session) {
         request_recovery();
         return;
     }
-    eq_processor processor;
+    constexpr std::uint32_t profile_transition_ms = 10;
+    eq_processor active_processor;
+    eq_processor pending_processor;
     std::uint64_t active_revision = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t pending_revision{};
+    std::size_t transition_frame{};
+    std::size_t transition_frames{};
     const HANDLE events[]{session.capture_event,
                           static_cast<HANDLE>(stop_event_.load(std::memory_order_acquire)),
                           static_cast<HANDLE>(recovery_event_.load(std::memory_order_acquire))};
@@ -582,11 +596,6 @@ void wasapi_audio_engine::capture_worker(stream_session& session) {
                 result = E_FAIL;
                 break;
             }
-            const auto requested_revision = profile_revision_.load(std::memory_order_acquire);
-            if (requested_revision != active_revision) {
-                auto profile = snapshot_profile(active_revision);
-                processor.configure(profile, static_cast<float>(session.capture_format.sample_rate), session.capture_format.channels);
-            }
             const auto sample_count = static_cast<std::size_t>(packet_frames) * session.capture_format.channels;
             if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0) {
                 std::fill_n(session.capture_scratch.data(), sample_count, 0.0F);
@@ -596,8 +605,31 @@ void wasapi_audio_engine::capture_worker(stream_session& session) {
                 result = E_FAIL;
                 break;
             }
-            processor.process_interleaved(session.capture_scratch.data(), packet_frames);
-            const auto pushed = session.ring.push(session.capture_scratch.data(), packet_frames);
+            const auto requested_revision = profile_revision_.load(std::memory_order_acquire);
+            if (active_revision == std::numeric_limits<std::uint64_t>::max()) {
+                const auto profile = snapshot_profile(active_revision);
+                active_processor.configure(profile, static_cast<float>(session.capture_format.sample_rate), session.capture_format.channels);
+            }
+            if (transition_frames == 0 && requested_revision != active_revision) {
+                const auto profile = snapshot_profile(pending_revision);
+                pending_processor.configure(profile, static_cast<float>(session.capture_format.sample_rate), session.capture_format.channels);
+                transition_frame = 0;
+                transition_frames = std::max<std::size_t>(1, static_cast<std::size_t>(session.capture_format.sample_rate) * profile_transition_ms / 1000U);
+            }
+
+            active_processor.process_interleaved(session.capture_scratch.data(), session.active_dsp_scratch.data(), packet_frames);
+            if (transition_frames != 0) {
+                pending_processor.process_interleaved(session.capture_scratch.data(), session.pending_dsp_scratch.data(), packet_frames);
+                equal_power_crossfade(session.active_dsp_scratch.data(), session.pending_dsp_scratch.data(), session.active_dsp_scratch.data(),
+                                      packet_frames, session.capture_format.channels, transition_frame, transition_frames);
+                transition_frame += packet_frames;
+                if (transition_frame >= transition_frames) {
+                    active_processor = pending_processor;
+                    active_revision = pending_revision;
+                    transition_frames = 0;
+                }
+            }
+            const auto pushed = session.ring.push(session.active_dsp_scratch.data(), packet_frames);
             if (pushed < packet_frames) capture_overflows_.fetch_add(packet_frames - pushed, std::memory_order_acq_rel);
             session.capture_service->ReleaseBuffer(packet_frames);
             ring_fill_frames_.store(session.ring.available_read(), std::memory_order_release);

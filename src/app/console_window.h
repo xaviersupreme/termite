@@ -3,6 +3,7 @@
 #include "app/console_layout.h"
 #include "app/console_skin.h"
 #include "app/console_state.h"
+#include "app/settings_store.h"
 #include "audio/session_router.h"
 #include "audio/wasapi_audio_engine.h"
 
@@ -45,6 +46,7 @@ private:
     void draw_preset_dropdown();
     void draw_fader_filter_menu();
     void draw_routing_picker();
+    void draw_diagnostics_popup();
     void update_pointer(POINT client_point);
     void execute_control(console_hit hit);
     void update_fader_from_point(int index, console_point point);
@@ -60,6 +62,15 @@ private:
     void refresh_routing_picker();
     void open_selected_routing_settings();
     void append_audio_status();
+    void show_diagnostics();
+    void load_settings();
+    void schedule_settings_save();
+    void save_settings();
+    void create_tray_icon();
+    void remove_tray_icon();
+    void show_from_tray();
+    void hide_to_tray();
+    void set_routing_reminder(const std::wstring& executable, bool selected);
 
     [[nodiscard]] console_point to_design(POINT client_point) const noexcept;
     [[nodiscard]] console_point client_to_design_screen(POINT screen_point) const noexcept;
@@ -72,6 +83,7 @@ private:
     [[nodiscard]] int routing_picker_row(console_point point) const noexcept;
 
     HINSTANCE instance_{};
+    HICON title_icon_{};
     HWND window_{};
     UINT dpi_{96};
     HRESULT com_initialization_{E_FAIL};
@@ -80,6 +92,7 @@ private:
     Microsoft::WRL::ComPtr<ID2D1HwndRenderTarget> render_target_;
     std::unique_ptr<console_skin> skin_;
     console_state state_;
+    settings_store settings_store_;
     wasapi_audio_engine audio_engine_;
     session_router session_router_;
     console_hit hot_hit_{};
@@ -97,10 +110,16 @@ private:
     console_rect filter_menu_rect_{};
     std::vector<routing_candidate> routing_candidates_;
     std::vector<bool> routing_selected_;
+    std::vector<std::wstring> routing_reminders_;
+    persisted_window_bounds restored_window_bounds_{};
     std::size_t routing_picker_first_item_{};
     int routing_picker_hot_row_{-1};
     int routing_picker_pressed_row_{-1};
     bool routing_picker_open_{};
+    bool diagnostics_popup_open_{};
+    bool settings_dirty_{};
+    bool tray_icon_visible_{};
+    bool quitting_{};
     bool dragging_scroll_{};
     float scroll_drag_offset_{};
     bool tracking_mouse_{};

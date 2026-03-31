@@ -67,4 +67,35 @@ int main() {
     for (const auto sample : samples) {
         assert(sample == 0.42F);
     }
+
+    limiter_profile.enabled = true;
+    processor.configure(limiter_profile, 48000.0F, 2);
+    std::vector<float> input(128, 0.25F);
+    std::vector<float> output(input.size());
+    processor.process_interleaved(input.data(), output.data(), input.size() / 2);
+    for (std::size_t index = 0; index < input.size(); ++index) {
+        assert(std::isfinite(output[index]));
+        assert(std::abs(output[index]) <= 0.708F);
+        assert(input[index] == 0.25F);
+    }
+
+    constexpr std::array shapes{
+        termite::filter_shape::peaking, termite::filter_shape::low_shelf, termite::filter_shape::high_shelf,
+        termite::filter_shape::low_pass, termite::filter_shape::high_pass, termite::filter_shape::notch,
+    };
+    for (const auto shape : shapes) {
+        auto shaped = termite::eq_profile::flat();
+        shaped.bands[7].shape = shape;
+        shaped.bands[7].gain_db = 12.0F;
+        shaped.bands[7].q = 4.0F;
+        processor.configure(shaped, 48000.0F, 2);
+        for (std::size_t index = 0; index < input.size(); ++index) {
+            input[index] = std::sin(static_cast<float>(index) * 0.13F) * 0.4F;
+        }
+        processor.process_interleaved(input.data(), output.data(), input.size() / 2);
+        for (const auto sample : output) {
+            assert(std::isfinite(sample));
+            assert(std::abs(sample) <= 1.0F);
+        }
+    }
 }

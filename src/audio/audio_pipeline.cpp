@@ -134,6 +134,25 @@ bool encode_interleaved(const float* source,
     return true;
 }
 
+void equal_power_crossfade(const float* active,
+                           const float* pending,
+                           float* output,
+                           std::size_t frame_count,
+                           std::size_t channels,
+                           std::size_t first_transition_frame,
+                           std::size_t transition_frames) noexcept {
+    if (active == nullptr || pending == nullptr || output == nullptr || channels == 0 || transition_frames == 0) return;
+    for (std::size_t frame = 0; frame < frame_count; ++frame) {
+        const float progress = std::min(1.0F, static_cast<float>(first_transition_frame + frame + 1) / static_cast<float>(transition_frames));
+        const float active_weight = std::cos(progress * pi * 0.5F);
+        const float pending_weight = std::sin(progress * pi * 0.5F);
+        for (std::size_t channel = 0; channel < channels; ++channel) {
+            const auto index = frame * channels + channel;
+            output[index] = clamp_sample(active[index] * active_weight + pending[index] * pending_weight);
+        }
+    }
+}
+
 bool spsc_frame_ring::configure(std::size_t capacity_frames, std::size_t channels) {
     if (capacity_frames < 2 || channels == 0 || channels > audio_max_channels) return false;
     storage_.assign(capacity_frames * channels, 0.0F);
