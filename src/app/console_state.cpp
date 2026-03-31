@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace termite {
 namespace {
@@ -54,6 +55,10 @@ std::wstring_view console_state::preset_name(std::size_t index) noexcept {
 
 int console_state::selected_preset_index() const noexcept { return preset_index_; }
 
+console_persistent_state console_state::persistent_state() const {
+    return {profile_, smoothing_amount_, dry_mix_, wet_mix_, preset_index_, paused_, sleeping_, default_start_saved_, grid_visible_, background_index_};
+}
+
 console_action_result console_state::activate(console_control control) {
     console_action_result result;
     switch (control) {
@@ -64,13 +69,18 @@ console_action_result console_state::activate(console_control control) {
             result.close = true;
             break;
         case console_control::hardware_menu:
+            append_notice(L"Hardware diagnostics opened.");
+            result.open_diagnostics = true;
+            break;
         case console_control::help_menu:
+            append_notice(L"Route an app to CABLE Input in Windows Volume Mixer.");
+            break;
         case console_control::route_apps:
             append_notice(L"Choose open apps, then set their output to CABLE Input in Volume Mixer.");
             result.open_routing = true;
             break;
         case console_control::file_menu:
-            append_notice(L"File menu: profile loading and saving are local placeholders in v1.");
+            append_notice(L"The current profile is saved automatically in Termite settings.");
             break;
         case console_control::themes_menu:
             append_notice(L"Native vsound-style background is active.");
@@ -150,10 +160,10 @@ console_action_result console_state::activate(console_control control) {
             result.profile_changed = true;
             break;
         case console_control::profile_open:
-            append_notice(L"Open profile is a local placeholder in v1.");
+            append_notice(L"Profile-file import is not part of v1; the working profile is saved automatically.");
             break;
         case console_control::profile_save:
-            append_notice(L"Save profile is a local placeholder in v1.");
+            append_notice(L"The working profile is saved automatically.");
             break;
         case console_control::preset_cycle:
             apply_next_preset();
@@ -172,7 +182,7 @@ console_action_result console_state::activate(console_control control) {
             append_notice(L"Smoothing adjusted.");
             break;
         case console_control::export_response:
-            append_notice(L"Export response is a local placeholder in v1.");
+            append_notice(L"Response export is not part of v1.");
             break;
         case console_control::grid:
             grid_visible_ = !grid_visible_;
@@ -231,6 +241,30 @@ bool console_state::apply_preset(std::size_t index) {
     profile_ = eq_profile::preset(preset_ids[index]);
     append_notice(preset_label() + L" preset applied.");
     return true;
+}
+
+void console_state::restore_persistent_state(const console_persistent_state& settings) {
+    profile_ = settings.profile;
+    for (std::size_t index = 0; index < graphic_band_count; ++index) {
+        auto& band = profile_.bands[index];
+        band.frequency_hz = graphic_band_frequencies[index];
+        band.gain_db = std::isfinite(band.gain_db) ? std::clamp(band.gain_db, -20.0F, 20.0F) : 0.0F;
+        band.q = std::isfinite(band.q) ? std::clamp(band.q, 0.15F, 12.0F) : 1.0F;
+        if (static_cast<std::size_t>(band.shape) > static_cast<std::size_t>(filter_shape::notch)) band.shape = filter_shape::peaking;
+    }
+    profile_.preamp_db = std::isfinite(profile_.preamp_db) ? std::clamp(profile_.preamp_db, -24.0F, 12.0F) : 0.0F;
+    profile_.limiter_ceiling_db = std::isfinite(profile_.limiter_ceiling_db) ? std::clamp(profile_.limiter_ceiling_db, -12.0F, 0.0F) : -1.0F;
+    smoothing_amount_ = std::clamp(settings.smoothing_amount, 0, 100);
+    wet_mix_ = std::clamp(settings.wet_mix, 0, 100);
+    dry_mix_ = 100 - wet_mix_;
+    preset_index_ = std::clamp(settings.preset_index, -1, static_cast<int>(preset_ids.size()) - 1);
+    paused_ = settings.paused;
+    sleeping_ = settings.sleeping;
+    if (paused_ || sleeping_) profile_.enabled = false;
+    default_start_saved_ = settings.default_start_saved;
+    grid_visible_ = settings.grid_visible;
+    background_index_ = settings.background_index % 6U;
+    append_notice(L"Saved settings restored.");
 }
 
 void console_state::set_scroll_offset(float offset) noexcept {

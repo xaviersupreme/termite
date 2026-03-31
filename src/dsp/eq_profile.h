@@ -73,6 +73,7 @@ public:
     void configure(const eq_profile& profile, float sample_rate, std::size_t channels) noexcept;
     void reset() noexcept;
     void process_interleaved(float* samples, std::size_t frame_count) noexcept;
+    void process_interleaved(const float* input, float* output, std::size_t frame_count) noexcept;
 
 private:
     static constexpr std::size_t max_channels = 8;

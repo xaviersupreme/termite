@@ -37,7 +37,15 @@ ctest --test-dir build-core --output-on-failure
 3. Select each app's output as `CABLE Input` in **Windows Settings → System → Sound → Volume mixer**.
 4. Adjust the shared 20-band graphic EQ profile. Every app sent to `CABLE Input` receives it.
 
+Termite saves its working profile, console state, window position, and selected-app reminders under `%LOCALAPPDATA%\Termite\settings.json`. Closing the console hides it to the notification area while processing continues; use **Quit** from the tray menu to stop it.
+
+Use **Hardware** to inspect the active capture/render endpoints, formats, buffer fill, xruns, and recovery reason.
+
 The default playback device must never be `CABLE Input`; that would create an audio feedback loop.
+
+## Audio validation
+
+After installing VB-CABLE, route a browser or media app to `CABLE Input` in Windows Volume Mixer and confirm that only that app is affected. Test a flat profile, a boost and cut, 44.1/48 kHz content, switching the default speakers/headphones while playing, and disabling/re-enabling the cable endpoint. Report the Hardware diagnostics if Termite does not recover.
 
 ## VB-CABLE
 

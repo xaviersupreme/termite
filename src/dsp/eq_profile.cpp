@@ -250,17 +250,25 @@ void eq_processor::reset() noexcept {
 }
 
 void eq_processor::process_interleaved(float* samples, std::size_t frame_count) noexcept {
+    process_interleaved(samples, samples, frame_count);
+}
+
+void eq_processor::process_interleaved(const float* input, float* output, std::size_t frame_count) noexcept {
+    if (input == nullptr || output == nullptr) return;
     if (!profile_.enabled) {
+        if (input != output) {
+            std::copy_n(input, frame_count * channels_, output);
+        }
         return;
     }
     for (std::size_t frame = 0; frame < frame_count; ++frame) {
         for (std::size_t channel = 0; channel < channels_; ++channel) {
-            auto sample = samples[frame * channels_ + channel];
+            auto sample = input[frame * channels_ + channel];
             for (auto& filter : filters_[channel]) {
                 sample = filter.process(sample);
             }
             sample *= preamp_linear_;
-            samples[frame * channels_ + channel] = std::clamp(sample, -limiter_ceiling_linear_, limiter_ceiling_linear_);
+            output[frame * channels_ + channel] = std::clamp(sample, -limiter_ceiling_linear_, limiter_ceiling_linear_);
         }
     }
 }

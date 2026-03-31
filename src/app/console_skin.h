@@ -4,6 +4,7 @@
 
 #include <d2d1.h>
 #include <dwrite.h>
+#include <windows.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -35,9 +36,11 @@ public:
     console_skin(IDWriteFactory* write_factory, ID2D1Factory* d2d_factory);
 
     void set_target(ID2D1RenderTarget* target) noexcept;
+    void set_title_icon(HICON icon) noexcept;
     void draw_background(console_rect rect, std::size_t background_index) const;
     void draw_checker(console_rect rect, bool carbon = false) const;
     void draw_title_bar(console_rect rect) const;
+    void draw_title_icon(console_rect rect) const;
     void draw_panel(console_rect rect, bool raised = false) const;
     void draw_graph_surface(console_rect rect) const;
     void draw_group(console_rect rect) const;
@@ -79,6 +82,8 @@ private:
     Microsoft::WRL::ComPtr<IDWriteTextFormat> title_format_;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> menu_format_;
     mutable std::array<Microsoft::WRL::ComPtr<ID2D1BitmapBrush>, 6> background_brushes_;
+    HICON title_icon_{};
+    mutable Microsoft::WRL::ComPtr<ID2D1Bitmap> title_icon_bitmap_;
     mutable std::unordered_map<std::uint32_t, Microsoft::WRL::ComPtr<ID2D1SolidColorBrush>> brush_cache_;
 };
 

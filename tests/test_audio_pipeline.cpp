@@ -104,6 +104,28 @@ void test_resampling_and_drift() {
     assert(std::abs(full_correction) <= 0.0025F);
 }
 
+void test_profile_crossfade() {
+    constexpr std::array<float, 16> active{
+        0.25F, 0.25F, 0.25F, 0.25F, 0.25F, 0.25F, 0.25F, 0.25F,
+        0.25F, 0.25F, 0.25F, 0.25F, 0.25F, 0.25F, 0.25F, 0.25F,
+    };
+    constexpr std::array<float, 16> pending{
+        -0.25F, -0.25F, -0.25F, -0.25F, -0.25F, -0.25F, -0.25F, -0.25F,
+        -0.25F, -0.25F, -0.25F, -0.25F, -0.25F, -0.25F, -0.25F, -0.25F,
+    };
+    std::array<float, 16> output{};
+    termite::equal_power_crossfade(active.data(), pending.data(), output.data(), 8, 2, 0, 8);
+    for (const auto sample : output) {
+        assert(std::isfinite(sample));
+        assert(std::abs(sample) <= 1.0F);
+    }
+    assert(output.front() > 0.0F);
+    assert(output.back() < 0.0F);
+    for (std::size_t index = 1; index < output.size(); ++index) {
+        assert(std::abs(output[index] - output[index - 1]) < 0.12F);
+    }
+}
+
 void test_endpoint_negotiation() {
     const termite::audio_format capture{termite::sample_encoding::float32, 44100, 2, 0};
     const termite::audio_format render{termite::sample_encoding::pcm_s24, 48000, 6, 0};
@@ -147,6 +169,7 @@ int main() {
     test_ring_buffer();
     test_channel_mapping();
     test_resampling_and_drift();
+    test_profile_crossfade();
     test_endpoint_negotiation();
     test_routing_policy();
 }

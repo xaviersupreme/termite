@@ -8,6 +8,7 @@
 #include <dwmapi.h>
 #include <format>
 #include <numbers>
+#include <shellapi.h>
 #include <string>
 #include <string_view>
 #include <windowsx.h>
@@ -17,6 +18,11 @@ namespace {
 
 constexpr wchar_t window_class_name[] = L"TermiteConsoleWindow";
 constexpr UINT_PTR status_timer_id = 1;
+constexpr UINT_PTR settings_save_timer_id = 2;
+constexpr UINT tray_callback_message = WM_APP + 1;
+constexpr UINT tray_icon_id = 1;
+constexpr UINT tray_show_command = 2001;
+constexpr UINT tray_quit_command = 2002;
 constexpr int fader_edit_control_id = 1001;
 constexpr DWORD dark_mode_attribute = 20;
 constexpr DWORD window_corner_preference_attribute = 33;
@@ -60,6 +66,15 @@ std::string narrow(std::wstring_view value) {
     return result;
 }
 
+std::wstring widen(std::string_view value) {
+    if (value.empty()) return {};
+    const auto length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    if (length <= 0) return {};
+    std::wstring result(static_cast<std::size_t>(length), L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(), length);
+    return result;
+}
+
 console_visual_state visual_state_for(console_hit control, console_hit hot, console_hit pressed, bool selected = false) {
     if (pressed == control) {
         return console_visual_state::pressed;
@@ -79,6 +94,8 @@ console_window::console_window(HINSTANCE instance) : instance_(instance), com_in
     D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d_factory_.GetAddressOf());
     DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write_factory_.GetAddressOf()));
     skin_ = std::make_unique<console_skin>(write_factory_.Get(), d2d_factory_.Get());
+    title_icon_ = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_TERMITE));
+    skin_->set_title_icon(title_icon_);
 }
 
 console_window::~console_window() {
@@ -89,12 +106,15 @@ console_window::~console_window() {
 }
 
 int console_window::run() {
+    load_settings();
     if (!create_window()) {
         return 1;
     }
 
+    create_tray_icon();
     ShowWindow(window_, SW_SHOW);
     UpdateWindow(window_);
+    sync_profile();
     if (!audio_engine_.start()) {
         state_.append_engine_status(audio_engine_.status_text());
     } else {
@@ -116,8 +136,8 @@ bool console_window::create_window() {
     definition.lpfnWndProc = &console_window::window_proc;
     definition.hInstance = instance_;
     definition.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    definition.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_TERMITE));
-    definition.hIconSm = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_TERMITE));
+    definition.hIcon = title_icon_;
+    definition.hIconSm = title_icon_;
     definition.lpszClassName = window_class_name;
     if (RegisterClassExW(&definition) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
         return false;
@@ -131,10 +151,21 @@ bool console_window::create_window() {
         static_cast<float>(std::max(1L, work_area.right - work_area.left - outer_margin * 2)),
         static_cast<float>(std::max(1L, work_area.bottom - work_area.top - outer_margin * 2)),
     }, 1.20F);
-    const auto width = static_cast<int>(std::lround(initial.width));
-    const auto height = static_cast<int>(std::lround(initial.height));
-    const auto left = work_area.left + ((work_area.right - work_area.left) - width) / 2;
-    const auto top = work_area.top + ((work_area.bottom - work_area.top) - height) / 2;
+    auto width = static_cast<int>(std::lround(initial.width));
+    auto height = static_cast<int>(std::lround(initial.height));
+    auto left = work_area.left + ((work_area.right - work_area.left) - width) / 2;
+    auto top = work_area.top + ((work_area.bottom - work_area.top) - height) / 2;
+    if (restored_window_bounds_.valid) {
+        const auto restored = console_layout::constrain_aspect_ratio({static_cast<float>(restored_window_bounds_.width), static_cast<float>(restored_window_bounds_.height)});
+        const auto work_width = static_cast<int>(work_area.right - work_area.left);
+        const auto work_height = static_cast<int>(work_area.bottom - work_area.top);
+        const auto work_left = static_cast<int>(work_area.left);
+        const auto work_top = static_cast<int>(work_area.top);
+        width = std::min(static_cast<int>(std::lround(restored.width)), work_width);
+        height = std::min(static_cast<int>(std::lround(restored.height)), work_height);
+        left = std::clamp(restored_window_bounds_.x, work_left, work_left + work_width - width);
+        top = std::clamp(restored_window_bounds_.y, work_top, work_top + work_height - height);
+    }
     window_ = CreateWindowExW(WS_EX_APPWINDOW,
                               window_class_name,
                               L"Termite",
@@ -254,6 +285,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 render_target_->Resize(D2D1::SizeU(LOWORD(lparam), HIWORD(lparam)));
             }
             position_fader_edit();
+            schedule_settings_save();
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case WM_ERASEBKGND:
@@ -268,6 +300,28 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         case WM_TIMER:
             if (wparam == status_timer_id) {
                 append_audio_status();
+                if (diagnostics_popup_open_) InvalidateRect(window_, nullptr, FALSE);
+            } else if (wparam == settings_save_timer_id) {
+                KillTimer(window_, settings_save_timer_id);
+                save_settings();
+            }
+            return 0;
+        case tray_callback_message:
+            if (lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK) {
+                show_from_tray();
+            } else if (lparam == WM_RBUTTONUP || lparam == WM_CONTEXTMENU) {
+                POINT point{};
+                GetCursorPos(&point);
+                const auto menu = CreatePopupMenu();
+                if (menu != nullptr) {
+                    AppendMenuW(menu, MF_STRING, tray_show_command, L"Show Termite");
+                    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+                    AppendMenuW(menu, MF_STRING, tray_quit_command, L"Quit");
+                    SetForegroundWindow(window_);
+                    TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, point.x, point.y, 0, window_, nullptr);
+                    DestroyMenu(menu);
+                    PostMessageW(window_, WM_NULL, 0, 0);
+                }
             }
             return 0;
         case WM_MOUSEMOVE: {
@@ -293,6 +347,11 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         case WM_LBUTTONDOWN: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             const auto design = to_design(point);
+            if (diagnostics_popup_open_) {
+                diagnostics_popup_open_ = false;
+                InvalidateRect(window_, nullptr, FALSE);
+                return 0;
+            }
             if (preset_dropdown_open_) {
                 const auto row = preset_dropdown_row(design);
                 if (row >= 0) {
@@ -380,6 +439,8 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 if (row == routing_picker_pressed_row_) {
                     if (row >= 0 && static_cast<std::size_t>(row) < routing_selected_.size()) {
                         routing_selected_[static_cast<std::size_t>(row)] = !routing_selected_[static_cast<std::size_t>(row)];
+                        set_routing_reminder(routing_candidates_[static_cast<std::size_t>(row)].executable_path,
+                                             routing_selected_[static_cast<std::size_t>(row)]);
                     } else if (row == routing_picker_refresh) {
                         refresh_routing_picker();
                     } else if (row == routing_picker_open) {
@@ -453,7 +514,10 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         }
         case WM_KEYDOWN:
             if (wparam == VK_ESCAPE) {
-                if (preset_dropdown_open_) {
+                if (diagnostics_popup_open_) {
+                    diagnostics_popup_open_ = false;
+                    InvalidateRect(window_, nullptr, FALSE);
+                } else if (preset_dropdown_open_) {
                     preset_dropdown_open_ = false;
                     preset_dropdown_hot_row_ = -1;
                     preset_dropdown_pressed_row_ = -1;
@@ -462,13 +526,23 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                     routing_picker_open_ = false;
                     InvalidateRect(window_, nullptr, FALSE);
                 } else {
-                    DestroyWindow(window_);
+                    hide_to_tray();
                 }
             } else if (wparam == VK_F5) {
                 execute_control({console_control::detect});
             }
             return 0;
         case WM_COMMAND:
+            if (LOWORD(wparam) == tray_show_command) {
+                show_from_tray();
+                return 0;
+            }
+            if (LOWORD(wparam) == tray_quit_command) {
+                quitting_ = true;
+                save_settings();
+                DestroyWindow(window_);
+                return 0;
+            }
             if (reinterpret_cast<HWND>(lparam) == fader_edit_ && HIWORD(wparam) == EN_KILLFOCUS) {
                 finish_fader_edit(true);
                 return 0;
@@ -482,8 +556,18 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 return reinterpret_cast<LRESULT>(GetStockObject(BLACK_BRUSH));
             }
             return DefWindowProcW(window_, message, wparam, lparam);
+        case WM_CLOSE:
+            if (quitting_) {
+                DestroyWindow(window_);
+            } else {
+                hide_to_tray();
+            }
+            return 0;
         case WM_DESTROY:
             KillTimer(window_, status_timer_id);
+            KillTimer(window_, settings_save_timer_id);
+            save_settings();
+            remove_tray_icon();
             audio_engine_.stop();
             PostQuitMessage(0);
             return 0;
@@ -581,13 +665,14 @@ void console_window::draw_console() {
     draw_preset_dropdown();
     draw_fader_filter_menu();
     draw_routing_picker();
+    draw_diagnostics_popup();
 }
 
 void console_window::draw_title_and_menu() {
     skin_->draw_title_bar(console_layout::title_bar());
     skin_->draw_panel(console_layout::menu_bar(), true);
     skin_->draw_panel(console_layout::title_icon());
-    skin_->draw_text(L"T", console_layout::title_icon(), console_text_style::title, DWRITE_TEXT_ALIGNMENT_CENTER);
+    skin_->draw_title_icon(console_layout::title_icon());
     skin_->draw_text(L"Termite", console_layout::title_label(), console_text_style::title);
 
     const std::array menus{
@@ -854,6 +939,31 @@ void console_window::draw_routing_picker() {
                        routing_picker_pressed_row_ == routing_picker_close ? console_visual_state::pressed : console_visual_state::normal);
 }
 
+void console_window::draw_diagnostics_popup() {
+    if (!diagnostics_popup_open_) return;
+    const auto frame = console_layout::hardware_diagnostics_frame();
+    const auto diagnostics = audio_engine_.diagnostics();
+    skin_->draw_popup(frame);
+    skin_->draw_panel({frame.x + 4.0F, frame.y + 4.0F, frame.width - 8.0F, 22.0F}, true);
+    skin_->draw_text(L"Audio diagnostics  —  click anywhere to close", {frame.x + 8.0F, frame.y + 5.0F, frame.width - 16.0F, 19.0F},
+                     console_text_style::title, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const auto capture = diagnostics.capture_endpoint_name.empty() ? std::wstring{L"Not connected"} : widen(diagnostics.capture_endpoint_name);
+    const auto render = diagnostics.render_endpoint_name.empty() ? std::wstring{L"Not connected"} : widen(diagnostics.render_endpoint_name);
+    const auto reason = diagnostics.recovery_reason.empty() ? std::wstring{L"None"} : widen(diagnostics.recovery_reason);
+    const std::array<std::wstring, 5> rows{
+        L"State: " + widen(audio_engine_.status_text()),
+        std::format(L"Capture: {}  ({} Hz, {} ch)", capture, diagnostics.capture_sample_rate, diagnostics.capture_channels),
+        std::format(L"Render: {}  ({} Hz, {} ch)", render, diagnostics.render_sample_rate, diagnostics.render_channels),
+        std::format(L"Ring: {} / {} frames    xruns: capture {}  render {}    restarts: {}", diagnostics.ring_fill_frames, diagnostics.target_fill_frames,
+                    diagnostics.capture_overflows, diagnostics.render_underflows, diagnostics.restart_count),
+        L"Recovery: " + reason,
+    };
+    for (std::size_t index = 0; index < rows.size(); ++index) {
+        skin_->draw_text(rows[index], {frame.x + 11.0F, frame.y + 32.0F + static_cast<float>(index) * 25.0F, frame.width - 22.0F, 20.0F},
+                         console_text_style::label);
+    }
+}
+
 void console_window::update_pointer(POINT client_point) {
     const auto design = to_design(client_point);
     if (preset_dropdown_open_) {
@@ -938,12 +1048,16 @@ void console_window::execute_control(console_hit hit) {
     if (result.open_routing) {
         show_routing_picker();
     }
+    if (result.open_diagnostics) {
+        show_diagnostics();
+    }
     if (result.minimize) {
         ShowWindow(window_, SW_MINIMIZE);
     }
     if (result.close) {
-        DestroyWindow(window_);
+        hide_to_tray();
     }
+    schedule_settings_save();
     InvalidateRect(window_, nullptr, FALSE);
 }
 
@@ -1119,6 +1233,7 @@ void console_window::update_scroll_from_point(console_point point) {
 
 void console_window::sync_profile() {
     audio_engine_.set_profile(state_.profile());
+    schedule_settings_save();
 }
 
 void console_window::show_routing_picker() {
@@ -1131,14 +1246,10 @@ void console_window::show_routing_picker() {
 }
 
 void console_window::refresh_routing_picker() {
-    std::vector<std::wstring> selected_paths;
-    for (std::size_t index = 0; index < routing_candidates_.size() && index < routing_selected_.size(); ++index) {
-        if (routing_selected_[index]) selected_paths.push_back(routing_candidates_[index].executable_path);
-    }
     routing_candidates_ = session_router_.open_apps();
     routing_selected_.assign(routing_candidates_.size(), false);
     for (std::size_t index = 0; index < routing_candidates_.size(); ++index) {
-        routing_selected_[index] = std::any_of(selected_paths.begin(), selected_paths.end(), [this, index](const std::wstring& selected) {
+        routing_selected_[index] = std::any_of(routing_reminders_.begin(), routing_reminders_.end(), [this, index](const std::wstring& selected) {
             return _wcsicmp(selected.c_str(), routing_candidates_[index].executable_path.c_str()) == 0;
         });
     }
@@ -1171,6 +1282,102 @@ void console_window::append_audio_status() {
         state_.append_engine_status(status);
         InvalidateRect(window_, nullptr, FALSE);
     }
+}
+
+void console_window::show_diagnostics() {
+    filter_menu_band_ = -1;
+    preset_dropdown_open_ = false;
+    routing_picker_open_ = false;
+    diagnostics_popup_open_ = true;
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void console_window::load_settings() {
+    const auto loaded = settings_store_.load();
+    if (loaded.loaded) {
+        state_.restore_persistent_state(loaded.settings.console);
+        routing_reminders_ = loaded.settings.routing_executables;
+        restored_window_bounds_ = loaded.settings.window;
+    } else if (!loaded.notice.empty()) {
+        state_.append_engine_status(narrow(loaded.notice));
+    }
+}
+
+void console_window::schedule_settings_save() {
+    settings_dirty_ = true;
+    if (window_ != nullptr && !quitting_) {
+        SetTimer(window_, settings_save_timer_id, 700, nullptr);
+    }
+}
+
+void console_window::save_settings() {
+    if (!settings_dirty_) return;
+    termite_settings settings;
+    settings.console = state_.persistent_state();
+    settings.routing_executables = routing_reminders_;
+    if (window_ != nullptr) {
+        RECT bounds{};
+        if (GetWindowRect(window_, &bounds)) {
+            settings.window = {bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top, true};
+        }
+    } else {
+        settings.window = restored_window_bounds_;
+    }
+    std::wstring failure;
+    if (!settings_store_.save(settings, failure)) {
+        state_.append_engine_status(narrow(failure));
+    }
+    settings_dirty_ = false;
+}
+
+void console_window::create_tray_icon() {
+    if (window_ == nullptr || title_icon_ == nullptr || tray_icon_visible_) return;
+    NOTIFYICONDATAW data{};
+    data.cbSize = sizeof(data);
+    data.hWnd = window_;
+    data.uID = tray_icon_id;
+    data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
+    data.uCallbackMessage = tray_callback_message;
+    data.hIcon = title_icon_;
+    wcsncpy_s(data.szTip, L"Termite — selected-app EQ", _TRUNCATE);
+    tray_icon_visible_ = Shell_NotifyIconW(NIM_ADD, &data) != FALSE;
+    if (tray_icon_visible_) {
+        data.uVersion = NOTIFYICON_VERSION_4;
+        Shell_NotifyIconW(NIM_SETVERSION, &data);
+    }
+}
+
+void console_window::remove_tray_icon() {
+    if (!tray_icon_visible_ || window_ == nullptr) return;
+    NOTIFYICONDATAW data{};
+    data.cbSize = sizeof(data);
+    data.hWnd = window_;
+    data.uID = tray_icon_id;
+    Shell_NotifyIconW(NIM_DELETE, &data);
+    tray_icon_visible_ = false;
+}
+
+void console_window::show_from_tray() {
+    ShowWindow(window_, IsIconic(window_) ? SW_RESTORE : SW_SHOW);
+    SetForegroundWindow(window_);
+}
+
+void console_window::hide_to_tray() {
+    if (editing_fader_ >= 0) finish_fader_edit(true);
+    ShowWindow(window_, SW_HIDE);
+    schedule_settings_save();
+}
+
+void console_window::set_routing_reminder(const std::wstring& executable, bool selected) {
+    const auto found = std::find_if(routing_reminders_.begin(), routing_reminders_.end(), [&executable](const std::wstring& existing) {
+        return _wcsicmp(existing.c_str(), executable.c_str()) == 0;
+    });
+    if (selected && found == routing_reminders_.end()) {
+        routing_reminders_.push_back(executable);
+    } else if (!selected && found != routing_reminders_.end()) {
+        routing_reminders_.erase(found);
+    }
+    schedule_settings_save();
 }
 
 console_point console_window::to_design(POINT client_point) const noexcept {

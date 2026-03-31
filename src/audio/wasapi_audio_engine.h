@@ -33,6 +33,7 @@ struct audio_diagnostics {
     std::uint16_t capture_channels{};
     std::uint16_t render_channels{};
     std::size_t ring_fill_frames{};
+    std::size_t target_fill_frames{};
     std::uint64_t capture_overflows{};
     std::uint64_t render_underflows{};
     std::uint64_t restart_count{};
@@ -78,6 +79,7 @@ private:
     std::atomic<std::uint64_t> render_underflows_{};
     std::atomic<std::uint64_t> restart_count_{};
     std::atomic<std::size_t> ring_fill_frames_{};
+    std::atomic<std::size_t> target_fill_frames_{};
 
     std::array<std::atomic<std::uint32_t>, graphic_band_count> band_gain_bits_{};
     std::array<std::atomic<std::uint32_t>, graphic_band_count> band_q_bits_{};

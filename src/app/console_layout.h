@@ -142,6 +142,7 @@ public:
     [[nodiscard]] static console_rect routing_picker_refresh_button(std::size_t candidate_count) noexcept;
     [[nodiscard]] static console_rect routing_picker_open_button(std::size_t candidate_count) noexcept;
     [[nodiscard]] static console_rect routing_picker_close_button(std::size_t candidate_count) noexcept;
+    [[nodiscard]] static console_rect hardware_diagnostics_frame() noexcept;
     [[nodiscard]] static float snap_fader_gain(float gain_db) noexcept;
     [[nodiscard]] static float display_glyph_units(wchar_t character) noexcept;
     [[nodiscard]] static console_display_layout measure_display_layout(std::wstring_view text, console_rect rect) noexcept;

@@ -151,8 +151,16 @@ void console_skin::set_target(ID2D1RenderTarget* target) noexcept {
         for (auto& background : background_brushes_) {
             background.Reset();
         }
+        title_icon_bitmap_.Reset();
     }
     target_ = target;
+}
+
+void console_skin::set_title_icon(HICON icon) noexcept {
+    if (title_icon_ != icon) {
+        title_icon_ = icon;
+        title_icon_bitmap_.Reset();
+    }
 }
 
 void console_skin::draw_background(console_rect bounds, std::size_t background_index) const {
@@ -207,6 +215,22 @@ void console_skin::draw_title_bar(console_rect bounds) const {
     target_->DrawLine(D2D1::Point2F(frame.left, frame.top), D2D1::Point2F(frame.left, frame.bottom), brush(D2D1::ColorF(0.31F, 0.33F, 0.34F, 0.64F)));
     target_->DrawLine(D2D1::Point2F(frame.left, frame.bottom - 1.0F), D2D1::Point2F(frame.right, frame.bottom - 1.0F), brush(black));
     target_->DrawLine(D2D1::Point2F(frame.right - 1.0F, frame.top), D2D1::Point2F(frame.right - 1.0F, frame.bottom), brush(black));
+}
+
+void console_skin::draw_title_icon(console_rect bounds) const {
+    if (target_ == nullptr || wic_factory_ == nullptr || title_icon_ == nullptr) return;
+    if (title_icon_bitmap_ == nullptr) {
+        Microsoft::WRL::ComPtr<IWICBitmap> bitmap;
+        Microsoft::WRL::ComPtr<IWICFormatConverter> converter;
+        if (FAILED(wic_factory_->CreateBitmapFromHICON(title_icon_, &bitmap)) ||
+            FAILED(wic_factory_->CreateFormatConverter(&converter)) ||
+            FAILED(converter->Initialize(bitmap.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0.0F, WICBitmapPaletteTypeCustom)) ||
+            FAILED(target_->CreateBitmapFromWicBitmap(converter.Get(), nullptr, &title_icon_bitmap_))) {
+            title_icon_bitmap_.Reset();
+            return;
+        }
+    }
+    target_->DrawBitmap(title_icon_bitmap_.Get(), rect(bounds), 1.0F, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
 }
 
 void console_skin::draw_panel(console_rect bounds, bool raised) const {

@@ -37,6 +37,13 @@ struct audio_format {
                                       const audio_format& format,
                                       std::size_t frame_count,
                                       std::span<std::byte> destination) noexcept;
+void equal_power_crossfade(const float* active,
+                           const float* pending,
+                           float* output,
+                           std::size_t frame_count,
+                           std::size_t channels,
+                           std::size_t first_transition_frame,
+                           std::size_t transition_frames) noexcept;
 
 class spsc_frame_ring {
 public:

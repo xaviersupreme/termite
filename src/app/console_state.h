@@ -17,6 +17,20 @@ struct console_action_result {
     bool minimize{};
     bool close{};
     bool request_engine_status{};
+    bool open_diagnostics{};
+};
+
+struct console_persistent_state {
+    eq_profile profile{eq_profile::flat()};
+    int smoothing_amount{50};
+    int dry_mix{100};
+    int wet_mix{};
+    int preset_index{-1};
+    bool paused{};
+    bool sleeping{};
+    bool default_start_saved{true};
+    bool grid_visible{true};
+    std::size_t background_index{};
 };
 
 class console_state {
@@ -36,6 +50,7 @@ public:
     [[nodiscard]] static std::size_t preset_count() noexcept;
     [[nodiscard]] static std::wstring_view preset_name(std::size_t index) noexcept;
     [[nodiscard]] int selected_preset_index() const noexcept;
+    [[nodiscard]] console_persistent_state persistent_state() const;
 
     console_action_result activate(console_control control);
     bool set_fader_gain(std::size_t index, float gain_db);
@@ -44,6 +59,7 @@ public:
     bool set_fader_shape(std::size_t index, filter_shape shape);
     bool set_fader_enabled(std::size_t index, bool enabled);
     bool apply_preset(std::size_t index);
+    void restore_persistent_state(const console_persistent_state& settings);
     void set_scroll_offset(float offset) noexcept;
     void append_engine_status(const std::string& status);
 
