@@ -135,10 +135,19 @@ std::vector<routing_candidate> session_router::eligible_sessions() const {
 }
 
 bool session_router::route_to_cable(const audio_session_info&, std::wstring& failure_reason) const {
-    // Windows exposes session enumeration publicly, but not a supported API for changing
-    // another application's endpoint. Keep this boundary explicit and reliable.
-    failure_reason = L"Windows does not provide a supported per-app output assignment API. Open Sound settings and set the app output to CABLE Input.";
+    failure_reason = L"Use the Route apps picker to select a visible app before applying its route.";
     return false;
+}
+
+bool session_router::route_to_cable(const routing_candidate& candidate,
+                                    app_audio_route_snapshot& previous_route,
+                                    std::wstring& diagnostic) const {
+    return app_audio_policy{}.route_executable_to_cable(candidate.executable_path, previous_route, diagnostic);
+}
+
+bool session_router::restore_route(const app_audio_route_snapshot& previous_route,
+                                   std::wstring& diagnostic) const {
+    return app_audio_policy{}.restore_executable_route(previous_route, diagnostic);
 }
 
 void session_router::open_manual_routing_settings() {

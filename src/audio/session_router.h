@@ -1,5 +1,7 @@
 #pragma once
 
+#include "audio/app_audio_policy.h"
+
 #include <string>
 #include <vector>
 
@@ -27,6 +29,11 @@ public:
     // rather than active audio sessions.
     [[nodiscard]] std::vector<routing_candidate> eligible_sessions() const;
     [[nodiscard]] bool route_to_cable(const audio_session_info& session, std::wstring& failure_reason) const;
+    [[nodiscard]] bool route_to_cable(const routing_candidate& candidate,
+                                      app_audio_route_snapshot& previous_route,
+                                      std::wstring& diagnostic) const;
+    [[nodiscard]] bool restore_route(const app_audio_route_snapshot& previous_route,
+                                     std::wstring& diagnostic) const;
     static void open_manual_routing_settings();
 };
 

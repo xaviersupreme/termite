@@ -230,7 +230,12 @@ void console_skin::draw_title_icon(console_rect bounds) const {
             return;
         }
     }
-    target_->DrawBitmap(title_icon_bitmap_.Get(), rect(bounds), 1.0F, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    // The executable icon includes a full multi-size ICO for Explorer and the
+    // tray. Keep the in-console rendition deliberately smaller so it reads as
+    // a title-bar mark rather than a second caption button.
+    const auto inset = D2D1::RectF(bounds.x + 2.0F, bounds.y + 2.0F,
+                                   bounds.right() - 2.0F, bounds.bottom() - 2.0F);
+    target_->DrawBitmap(title_icon_bitmap_.Get(), inset, 1.0F, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
 }
 
 void console_skin::draw_panel(console_rect bounds, bool raised) const {

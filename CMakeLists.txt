@@ -55,10 +55,12 @@ if(TERMITE_BUILD_APP)
         src/app/termite.rc
         src/audio/wasapi_audio_engine.cpp
         src/audio/wasapi_audio_engine.h
+        src/audio/app_audio_policy.cpp
+        src/audio/app_audio_policy.h
         src/audio/session_router.cpp
         src/audio/session_router.h
     )
-    target_link_libraries(termite PRIVATE termite_dsp termite_audio_core ole32 uuid avrt shell32 d2d1 dwrite dwmapi windowscodecs user32 gdi32)
+    target_link_libraries(termite PRIVATE termite_dsp termite_audio_core ole32 uuid avrt shell32 runtimeobject d2d1 dwrite dwmapi windowscodecs user32 gdi32)
     if(MSVC)
         # CMake's Visual Studio generator recognizes /MANIFESTUAC as a generic
         # boolean and otherwise emits the default asInvoker manifest. Import a

@@ -60,7 +60,8 @@ private:
     void sync_profile();
     void show_routing_picker();
     void refresh_routing_picker();
-    void open_selected_routing_settings();
+    void route_selected_apps();
+    void restore_automatic_routes();
     void append_audio_status();
     void show_diagnostics();
     void load_settings();
@@ -111,6 +112,7 @@ private:
     std::vector<routing_candidate> routing_candidates_;
     std::vector<bool> routing_selected_;
     std::vector<std::wstring> routing_reminders_;
+    std::vector<app_audio_route_snapshot> automatic_routes_;
     persisted_window_bounds restored_window_bounds_{};
     std::size_t routing_picker_first_item_{};
     int routing_picker_hot_row_{-1};

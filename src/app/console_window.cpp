@@ -32,8 +32,9 @@ constexpr float filter_menu_row_height = 19.0F;
 constexpr int filter_menu_shape_rows = 6;
 constexpr int filter_menu_toggle_row = 6;
 constexpr int routing_picker_refresh = -2;
-constexpr int routing_picker_open = -3;
-constexpr int routing_picker_close = -4;
+constexpr int routing_picker_route = -3;
+constexpr int routing_picker_mixer = -4;
+constexpr int routing_picker_close = -5;
 constexpr float routing_picker_header_height = 24.0F;
 constexpr float routing_picker_instruction_height = 28.0F;
 constexpr float routing_picker_guidance_height = 25.0F;
@@ -307,9 +308,17 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
             }
             return 0;
         case tray_callback_message:
-            if (lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK) {
+            // NOTIFYICON_VERSION_4 packs the event in the low word. Comparing
+            // the complete LPARAM made the icon inert when it included its id.
+            switch (const auto event = LOWORD(lparam)) {
+            case NIN_SELECT:
+            case NIN_KEYSELECT:
+            case WM_LBUTTONUP:
+            case WM_LBUTTONDBLCLK:
                 show_from_tray();
-            } else if (lparam == WM_RBUTTONUP || lparam == WM_CONTEXTMENU) {
+                return 0;
+            case WM_RBUTTONUP:
+            case WM_CONTEXTMENU: {
                 POINT point{};
                 GetCursorPos(&point);
                 const auto menu = CreatePopupMenu();
@@ -322,8 +331,11 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                     DestroyMenu(menu);
                     PostMessageW(window_, WM_NULL, 0, 0);
                 }
+                return 0;
             }
-            return 0;
+            default:
+                return 0;
+            }
         case WM_MOUSEMOVE: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             update_pointer(point);
@@ -369,7 +381,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
             }
             if (routing_picker_open_) {
                 const auto row = routing_picker_row(design);
-                if (row >= 0 || row == routing_picker_refresh || row == routing_picker_open || row == routing_picker_close) {
+                if (row >= 0 || row == routing_picker_refresh || row == routing_picker_route || row == routing_picker_mixer || row == routing_picker_close) {
                     routing_picker_pressed_row_ = row;
                     SetCapture(window_);
                 } else if (!console_layout::routing_picker_frame(routing_candidates_.size()).contains(design)) {
@@ -443,8 +455,10 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                                              routing_selected_[static_cast<std::size_t>(row)]);
                     } else if (row == routing_picker_refresh) {
                         refresh_routing_picker();
-                    } else if (row == routing_picker_open) {
-                        open_selected_routing_settings();
+                    } else if (row == routing_picker_route) {
+                        route_selected_apps();
+                    } else if (row == routing_picker_mixer) {
+                        session_router::open_manual_routing_settings();
                     } else if (row == routing_picker_close) {
                         routing_picker_open_ = false;
                     }
@@ -567,6 +581,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
             KillTimer(window_, status_timer_id);
             KillTimer(window_, settings_save_timer_id);
             save_settings();
+            restore_automatic_routes();
             remove_tray_icon();
             audio_engine_.stop();
             PostQuitMessage(0);
@@ -907,7 +922,7 @@ void console_window::draw_routing_picker() {
                                 : std::format(L"Route apps  ({}-{} of {})", routing_picker_first_item_ + 1, last, routing_candidates_.size());
     skin_->draw_text(count_text, {frame.x + 8.0F, frame.y + 5.0F, frame.width - 16.0F, routing_picker_header_height - 2.0F},
                      console_text_style::title, DWRITE_TEXT_ALIGNMENT_CENTER);
-    skin_->draw_text(L"Select open apps. Routing is manual in Windows Volume Mixer.",
+    skin_->draw_text(L"Select open apps, then apply their CABLE Input route.",
                      {frame.x + 9.0F, frame.y + routing_picker_header_height, frame.width - 18.0F, routing_picker_instruction_height},
                      console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
 
@@ -928,13 +943,15 @@ void console_window::draw_routing_picker() {
     }
 
     const auto guidance_y = frame.bottom() - routing_picker_footer_height - routing_picker_guidance_height;
-    skin_->draw_text(L"CABLE mixes sources: any app manually sent to CABLE Input is EQ'd.",
+    skin_->draw_text(L"Routes are restored when you Quit Termite. Volume Mixer remains available.",
                      {frame.x + 9.0F, guidance_y, frame.width - 18.0F, routing_picker_guidance_height},
                      console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_button(console_layout::routing_picker_refresh_button(routing_candidates_.size()), L"Refresh",
                        routing_picker_pressed_row_ == routing_picker_refresh ? console_visual_state::pressed : console_visual_state::normal);
-    skin_->draw_button(console_layout::routing_picker_open_button(routing_candidates_.size()), L"Open Volume Mixer",
-                       routing_picker_pressed_row_ == routing_picker_open ? console_visual_state::pressed : console_visual_state::normal);
+    skin_->draw_button(console_layout::routing_picker_open_button(routing_candidates_.size()), L"Route selected",
+                       routing_picker_pressed_row_ == routing_picker_route ? console_visual_state::pressed : console_visual_state::normal);
+    skin_->draw_button(console_layout::routing_picker_mixer_button(routing_candidates_.size()), L"Volume Mixer",
+                       routing_picker_pressed_row_ == routing_picker_mixer ? console_visual_state::pressed : console_visual_state::normal);
     skin_->draw_button(console_layout::routing_picker_close_button(routing_candidates_.size()), L"Close",
                        routing_picker_pressed_row_ == routing_picker_close ? console_visual_state::pressed : console_visual_state::normal);
 }
@@ -1205,7 +1222,8 @@ int console_window::routing_picker_row(console_point point) const noexcept {
     const auto frame = console_layout::routing_picker_frame(routing_candidates_.size());
     if (!frame.contains(point)) return -1;
     if (console_layout::routing_picker_refresh_button(routing_candidates_.size()).contains(point)) return routing_picker_refresh;
-    if (console_layout::routing_picker_open_button(routing_candidates_.size()).contains(point)) return routing_picker_open;
+    if (console_layout::routing_picker_open_button(routing_candidates_.size()).contains(point)) return routing_picker_route;
+    if (console_layout::routing_picker_mixer_button(routing_candidates_.size()).contains(point)) return routing_picker_mixer;
     if (console_layout::routing_picker_close_button(routing_candidates_.size()).contains(point)) return routing_picker_close;
     const auto visible = console_layout::routing_picker_visible_rows(routing_candidates_.size());
     for (std::size_t visible_index = 0; visible_index < visible; ++visible_index) {
@@ -1259,20 +1277,45 @@ void console_window::refresh_routing_picker() {
     state_.append_engine_status(std::format("{} eligible open app(s) found.", routing_candidates_.size()));
 }
 
-void console_window::open_selected_routing_settings() {
+void console_window::route_selected_apps() {
     std::size_t selected{};
+    std::size_t routed{};
     for (std::size_t index = 0; index < routing_candidates_.size() && index < routing_selected_.size(); ++index) {
         if (!routing_selected_[index]) continue;
         ++selected;
-        state_.append_engine_status(std::format("Set {} Output device to CABLE Input, then play audio.",
-                                                 narrow(routing_candidates_[index].display_name)));
+        app_audio_route_snapshot previous_route;
+        std::wstring diagnostic;
+        if (session_router_.route_to_cable(routing_candidates_[index], previous_route, diagnostic)) {
+            const auto already_tracked = std::any_of(automatic_routes_.begin(), automatic_routes_.end(), [&previous_route](const app_audio_route_snapshot& existing) {
+                return _wcsicmp(existing.executable_path.c_str(), previous_route.executable_path.c_str()) == 0;
+            });
+            if (!already_tracked) automatic_routes_.push_back(std::move(previous_route));
+            routing_candidates_[index].routed_to_cable = true;
+            ++routed;
+            state_.append_engine_status(std::format("{}: {}", narrow(routing_candidates_[index].display_name), narrow(diagnostic)));
+        } else {
+            state_.append_engine_status(std::format("{} could not be routed automatically: {}. Use Volume Mixer.",
+                                                     narrow(routing_candidates_[index].display_name), narrow(diagnostic)));
+        }
     }
     if (selected == 0) {
-        state_.append_engine_status("Select one or more open apps before opening Volume Mixer.");
+        state_.append_engine_status("Select one or more open apps before routing them.");
         return;
     }
-    state_.append_engine_status("Selection is routing guidance; CABLE Input mixes every manually routed source.");
-    session_router::open_manual_routing_settings();
+    if (routed > 0) {
+        state_.append_engine_status("CABLE Input mixes the routed apps. Restart playback if an app already had an active stream.");
+    }
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void console_window::restore_automatic_routes() {
+    for (const auto& route : automatic_routes_) {
+        std::wstring diagnostic;
+        if (!session_router_.restore_route(route, diagnostic)) {
+            state_.append_engine_status(std::format("Could not restore {}: {}", narrow(route.executable_path), narrow(diagnostic)));
+        }
+    }
+    automatic_routes_.clear();
 }
 
 void console_window::append_audio_status() {
