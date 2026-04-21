@@ -181,6 +181,7 @@ void test_derived_console_geometry() {
     }
     for (const auto button : {termite::console_layout::routing_picker_refresh_button(9),
                               termite::console_layout::routing_picker_open_button(9),
+                              termite::console_layout::routing_picker_mixer_button(9),
                               termite::console_layout::routing_picker_close_button(9)}) {
         assert(button.x >= picker.x && button.right() <= picker.right());
         assert(button.y >= picker.y && button.bottom() <= picker.bottom());

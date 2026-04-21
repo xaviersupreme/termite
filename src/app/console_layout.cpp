@@ -371,7 +371,12 @@ console_rect console_layout::routing_picker_refresh_button(std::size_t candidate
 
 console_rect console_layout::routing_picker_open_button(std::size_t candidate_count) noexcept {
     const auto refresh = routing_picker_refresh_button(candidate_count);
-    return {refresh.right() + 6.0F, refresh.y, 145.0F, refresh.height};
+    return {refresh.right() + 6.0F, refresh.y, 110.0F, refresh.height};
+}
+
+console_rect console_layout::routing_picker_mixer_button(std::size_t candidate_count) noexcept {
+    const auto route = routing_picker_open_button(candidate_count);
+    return {route.right() + 6.0F, route.y, 126.0F, route.height};
 }
 
 console_rect console_layout::routing_picker_close_button(std::size_t candidate_count) noexcept {
