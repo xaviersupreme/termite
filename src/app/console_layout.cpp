@@ -1,4 +1,5 @@
 #include "app/console_layout.h"
+#include "app/console_state.h"
 #include "dsp/eq_profile.h"
 
 #include <algorithm>
@@ -327,20 +328,30 @@ console_rect console_layout::preset_dropdown_frame() noexcept {
     constexpr float padding = 2.0F;
     constexpr float row_height = 22.0F;
     constexpr float field_gap = 2.0F;
-    constexpr float row_count = 3.0F;
+    constexpr std::size_t rows_per_column = 5;
+    constexpr float column_gap = 2.0F;
     const auto field = control_rect(console_control::preset_cycle);
-    const float height = padding * 2.0F + row_height * row_count;
-    return {field.x, field.y - field_gap - height, field.width, height};
+    const auto columns = std::max<std::size_t>(1, (console_state::preset_count() + rows_per_column - 1) / rows_per_column);
+    const float item_width = field.width - padding * 2.0F;
+    const float width = padding * 2.0F + item_width * static_cast<float>(columns) + column_gap * static_cast<float>(columns - 1);
+    const float height = padding * 2.0F + row_height * static_cast<float>(std::min(rows_per_column, console_state::preset_count()));
+    return {field.x + (field.width - width) * 0.5F, field.y - field_gap - height, width, height};
 }
 
 console_rect console_layout::preset_dropdown_item(std::size_t index) noexcept {
     constexpr float padding = 2.0F;
     constexpr float row_height = 22.0F;
-    if (index >= 3) return {};
+    constexpr std::size_t rows_per_column = 5;
+    constexpr float column_gap = 2.0F;
+    if (index >= console_state::preset_count()) return {};
     const auto frame = preset_dropdown_frame();
-    return {frame.x + padding,
-            frame.y + padding + static_cast<float>(index) * row_height,
-            frame.width - padding * 2.0F,
+    const auto field = control_rect(console_control::preset_cycle);
+    const float item_width = field.width - padding * 2.0F;
+    const auto column = index / rows_per_column;
+    const auto row = index % rows_per_column;
+    return {frame.x + padding + static_cast<float>(column) * (item_width + column_gap),
+            frame.y + padding + static_cast<float>(row) * row_height,
+            item_width,
             row_height - 1.0F};
 }
 

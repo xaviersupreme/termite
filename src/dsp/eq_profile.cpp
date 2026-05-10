@@ -24,6 +24,13 @@ float clamp_q(float q) noexcept {
     return std::clamp(q, 0.15F, 12.0F);
 }
 
+void apply_graphic_gains(eq_profile& profile, const std::array<float, graphic_band_count>& gains, float preamp_db) noexcept {
+    for (std::size_t index = 0; index < profile.bands.size(); ++index) {
+        profile.bands[index].gain_db = gains[index];
+    }
+    profile.preamp_db = preamp_db;
+}
+
 }  // namespace
 
 eq_profile eq_profile::flat() noexcept {
@@ -39,24 +46,43 @@ eq_profile eq_profile::preset(std::string_view preset_name) noexcept {
     if (preset_name == "bass") {
         constexpr std::array<float, 20> gains{7.0F, 7.0F, 6.0F, 5.0F, 4.0F, 2.0F, 0.5F, -1.0F, -1.5F, -1.5F,
             -1.0F, -0.5F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
-        for (std::size_t index = 0; index < profile.bands.size(); ++index) {
-            profile.bands[index].gain_db = gains[index];
-        }
-        profile.preamp_db = -6.0F;
+        apply_graphic_gains(profile, gains, -6.0F);
+    } else if (preset_name == "deep_bass") {
+        constexpr std::array<float, 20> gains{10.0F, 10.0F, 9.0F, 7.0F, 5.0F, 3.0F, 0.5F, -1.0F, -1.5F, -1.5F,
+            -1.0F, -0.5F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
+        apply_graphic_gains(profile, gains, -9.0F);
+    } else if (preset_name == "bass_cut") {
+        constexpr std::array<float, 20> gains{-10.0F, -10.0F, -9.0F, -8.0F, -6.0F, -4.0F, -3.0F, -1.5F, -0.5F, 0.0F,
+            0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
+        apply_graphic_gains(profile, gains, 0.0F);
+    } else if (preset_name == "loudness") {
+        constexpr std::array<float, 20> gains{6.0F, 6.0F, 5.0F, 4.0F, 3.0F, 1.0F, 0.0F, -1.0F, -1.0F, -0.5F,
+            0.0F, 0.5F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 5.0F, 4.0F, 3.0F};
+        apply_graphic_gains(profile, gains, -6.0F);
     } else if (preset_name == "vocal") {
         constexpr std::array<float, 20> gains{-3.0F, -3.0F, -3.0F, -2.5F, -2.0F, -1.5F, -1.0F, 0.0F, 1.0F, 2.0F,
             3.0F, 3.5F, 3.0F, 2.0F, 1.5F, 1.0F, 0.5F, 0.0F, 0.0F, 0.0F};
-        for (std::size_t index = 0; index < profile.bands.size(); ++index) {
-            profile.bands[index].gain_db = gains[index];
-        }
-        profile.preamp_db = -3.5F;
+        apply_graphic_gains(profile, gains, -3.5F);
+    } else if (preset_name == "clarity") {
+        constexpr std::array<float, 20> gains{-2.0F, -2.0F, -2.0F, -2.0F, -1.0F, -1.0F, -0.5F, 0.0F, 0.5F, 1.5F,
+            2.5F, 3.0F, 2.5F, 1.5F, 1.0F, 0.5F, 0.0F, 0.0F, 0.0F, 0.0F};
+        apply_graphic_gains(profile, gains, -3.0F);
+    } else if (preset_name == "warm") {
+        constexpr std::array<float, 20> gains{2.5F, 2.5F, 2.0F, 2.0F, 1.5F, 1.0F, 0.0F, -0.5F, -1.0F, -1.0F,
+            -1.0F, -1.5F, -2.0F, -2.5F, -3.0F, -3.0F, -3.0F, -2.5F, -2.0F, -1.5F};
+        apply_graphic_gains(profile, gains, -2.5F);
     } else if (preset_name == "bright") {
         constexpr std::array<float, 20> gains{0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.5F, 1.0F,
             1.5F, 2.0F, 2.5F, 3.0F, 3.5F, 4.0F, 4.0F, 3.5F, 3.0F, 2.5F};
-        for (std::size_t index = 0; index < profile.bands.size(); ++index) {
-            profile.bands[index].gain_db = gains[index];
-        }
-        profile.preamp_db = -4.0F;
+        apply_graphic_gains(profile, gains, -4.0F);
+    } else if (preset_name == "de_ess") {
+        constexpr std::array<float, 20> gains{0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+            0.0F, -0.5F, -1.5F, -3.0F, -5.0F, -6.0F, -5.0F, -3.0F, -2.0F, -1.0F};
+        apply_graphic_gains(profile, gains, 0.0F);
+    } else if (preset_name == "treble_cut") {
+        constexpr std::array<float, 20> gains{0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+            -0.5F, -1.0F, -2.0F, -3.0F, -4.0F, -5.0F, -6.0F, -6.0F, -5.0F, -4.0F};
+        apply_graphic_gains(profile, gains, 0.0F);
     }
     return profile;
 }

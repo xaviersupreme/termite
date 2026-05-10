@@ -24,9 +24,9 @@ if (-not $window_source.Contains('skin_->draw_title_icon(console_layout::title_i
     throw 'The custom title bar must draw the embedded Termite icon instead of a text glyph.'
 }
 
-if (-not $window_source.Contains('case WM_CLOSE:') -or -not $window_source.Contains('hide_to_tray();') -or
-    -not $window_source.Contains('tray_quit_command')) {
-    throw 'Closing Termite must hide it to the notification area and retain an explicit Quit command.'
+if (-not $window_source.Contains('case WM_CLOSE:') -or -not $window_source.Contains('quitting_ = true;') -or
+    -not $window_source.Contains('DestroyWindow(window_);') -or -not $window_source.Contains('tray_quit_command')) {
+    throw 'Closing Termite must stop the app, restore temporary routes, and retain an explicit tray Quit command.'
 }
 
 foreach ($expected_path in @(

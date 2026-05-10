@@ -450,9 +450,33 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 if (GetCapture() == window_) ReleaseCapture();
                 if (row == routing_picker_pressed_row_) {
                     if (row >= 0 && static_cast<std::size_t>(row) < routing_selected_.size()) {
-                        routing_selected_[static_cast<std::size_t>(row)] = !routing_selected_[static_cast<std::size_t>(row)];
-                        set_routing_reminder(routing_candidates_[static_cast<std::size_t>(row)].executable_path,
-                                             routing_selected_[static_cast<std::size_t>(row)]);
+                        const auto index = static_cast<std::size_t>(row);
+                        const auto& candidate = routing_candidates_[index];
+                        if (routing_selected_[index]) {
+                            const auto route = std::find_if(automatic_routes_.begin(), automatic_routes_.end(), [&candidate](const app_audio_route_snapshot& existing) {
+                                return _wcsicmp(existing.executable_path.c_str(), candidate.executable_path.c_str()) == 0;
+                            });
+                            if (route == automatic_routes_.end()) {
+                                routing_selected_[index] = false;
+                                set_routing_reminder(candidate.executable_path, false);
+                                routing_candidates_[index].routed_to_cable = false;
+                                state_.append_engine_status(std::format("{} was removed from Termite's routing list.", narrow(candidate.display_name)));
+                            } else {
+                                std::wstring diagnostic;
+                                if (session_router_.restore_route(*route, diagnostic)) {
+                                    automatic_routes_.erase(route);
+                                    routing_selected_[index] = false;
+                                    set_routing_reminder(candidate.executable_path, false);
+                                    routing_candidates_[index].routed_to_cable = false;
+                                    state_.append_engine_status(std::format("{}: {}", narrow(candidate.display_name), narrow(diagnostic)));
+                                } else {
+                                    state_.append_engine_status(std::format("Could not unroute {}: {}", narrow(candidate.display_name), narrow(diagnostic)));
+                                }
+                            }
+                        } else {
+                            routing_selected_[index] = true;
+                            set_routing_reminder(candidate.executable_path, true);
+                        }
                     } else if (row == routing_picker_refresh) {
                         refresh_routing_picker();
                     } else if (row == routing_picker_route) {
@@ -571,11 +595,9 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
             }
             return DefWindowProcW(window_, message, wparam, lparam);
         case WM_CLOSE:
-            if (quitting_) {
-                DestroyWindow(window_);
-            } else {
-                hide_to_tray();
-            }
+            quitting_ = true;
+            save_settings();
+            DestroyWindow(window_);
             return 0;
         case WM_DESTROY:
             KillTimer(window_, status_timer_id);
@@ -1072,7 +1094,10 @@ void console_window::execute_control(console_hit hit) {
         ShowWindow(window_, SW_MINIMIZE);
     }
     if (result.close) {
-        hide_to_tray();
+        quitting_ = true;
+        save_settings();
+        DestroyWindow(window_);
+        return;
     }
     schedule_settings_save();
     InvalidateRect(window_, nullptr, FALSE);
