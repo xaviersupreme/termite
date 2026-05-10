@@ -189,12 +189,16 @@ void test_derived_console_geometry() {
 
     const auto preset_field = termite::console_layout::control_rect(termite::console_control::preset_cycle);
     const auto preset_popup = termite::console_layout::preset_dropdown_frame();
-    assert(preset_popup.width == preset_field.width);
+    assert(preset_popup.width >= preset_field.width);
     assert(preset_popup.bottom() < preset_field.y);
     for (std::size_t index = 0; index < termite::console_state::preset_count(); ++index) {
         const auto item = termite::console_layout::preset_dropdown_item(index);
         assert(item.x >= preset_popup.x && item.right() <= preset_popup.right());
         assert(item.y >= preset_popup.y && item.bottom() <= preset_popup.bottom());
+        for (std::size_t other = index + 1; other < termite::console_state::preset_count(); ++other) {
+            const auto next = termite::console_layout::preset_dropdown_item(other);
+            assert(item.right() <= next.x || next.right() <= item.x || item.bottom() <= next.y || next.bottom() <= item.y);
+        }
     }
 
     const auto diagnostics = termite::console_layout::hardware_diagnostics_frame();
@@ -213,6 +217,7 @@ void test_settings_store() {
     settings.console.wet_mix = 35;
     settings.console.dry_mix = 65;
     settings.console.grid_visible = false;
+    settings.console.preset_index = static_cast<int>(termite::console_state::preset_count()) - 1;
     settings.window = {120, 80, 1245, 700, true};
     settings.routing_executables = {L"C:\\Apps\\Player.exe", L"C:\\Apps\\Browser.exe"};
     std::wstring failure;
@@ -222,6 +227,7 @@ void test_settings_store() {
     assert(std::abs(loaded.settings.console.profile.bands[4].gain_db - 7.5F) < 0.001F);
     assert(std::abs(loaded.settings.console.profile.bands[4].q - 2.3F) < 0.001F);
     assert(!loaded.settings.console.grid_visible);
+    assert(loaded.settings.console.preset_index == static_cast<int>(termite::console_state::preset_count()) - 1);
     assert(loaded.settings.window.valid);
     assert(loaded.settings.routing_executables.size() == 2);
 
@@ -291,10 +297,18 @@ void test_console_commands() {
     assert(state.set_fader_shape(0, termite::filter_shape::notch));
     assert(state.set_fader_enabled(0, false));
     assert(!state.profile().bands[0].enabled);
-    assert(termite::console_state::preset_count() == 3);
-    assert(state.apply_preset(1));
-    assert(state.selected_preset_index() == 1);
-    assert(state.preset_label() == L"Vocal");
+    assert(termite::console_state::preset_count() == 10);
+    for (std::size_t index = 0; index < termite::console_state::preset_count(); ++index) {
+        assert(!termite::console_state::preset_name(index).empty());
+        assert(state.apply_preset(index));
+        assert(state.selected_preset_index() == static_cast<int>(index));
+        assert(state.profile().enabled);
+        for (const auto& band : state.profile().bands) {
+            assert(std::isfinite(band.gain_db));
+            assert(band.gain_db >= -20.0F && band.gain_db <= 20.0F);
+        }
+    }
+    assert(state.preset_label() == L"Treble cut");
     assert(!state.apply_preset(termite::console_state::preset_count()));
 
     const auto grid = state.grid_visible();

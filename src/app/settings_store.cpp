@@ -1,5 +1,6 @@
 #include "app/settings_store.h"
 
+#include "app/console_state.h"
 #include "dsp/eq_profile.h"
 
 #ifndef NOMINMAX
@@ -289,7 +290,7 @@ void write_string(std::ostringstream& output, std::string_view value) {
     state.smoothing_amount = std::clamp(state.smoothing_amount, 0, 100);
     state.wet_mix = std::clamp(state.wet_mix, 0, 100);
     state.dry_mix = 100 - state.wet_mix;
-    state.preset_index = std::clamp(state.preset_index, -1, 2);
+    state.preset_index = std::clamp(state.preset_index, -1, static_cast<int>(console_state::preset_count()) - 1);
     state.background_index = static_cast<std::size_t>(std::max(0, background)) % 6U;
 
     const auto* window = member(root, "window");

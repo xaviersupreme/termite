@@ -7,8 +7,12 @@
 namespace termite {
 namespace {
 
-constexpr std::array<std::string_view, 3> preset_ids{"bass", "vocal", "bright"};
-constexpr std::array<std::wstring_view, 3> preset_labels{L"Bass boost", L"Vocal", L"Bright"};
+constexpr std::array<std::string_view, 10> preset_ids{
+    "bass", "deep_bass", "bass_cut", "loudness", "vocal", "clarity", "warm", "bright", "de_ess", "treble_cut",
+};
+constexpr std::array<std::wstring_view, 10> preset_labels{
+    L"Bass boost", L"Deep bass", L"Bass cut", L"Loudness", L"Vocal", L"Clarity", L"Warm", L"Treble boost", L"De-ess", L"Treble cut",
+};
 
 std::wstring widen(const std::string& value) {
     return {value.begin(), value.end()};
@@ -73,10 +77,10 @@ console_action_result console_state::activate(console_control control) {
             result.open_diagnostics = true;
             break;
         case console_control::help_menu:
-            append_notice(L"Route an app to CABLE Input in Windows Volume Mixer.");
+            append_notice(L"Use Route apps to send an open app to CABLE Input while Termite is running.");
             break;
         case console_control::route_apps:
-            append_notice(L"Choose open apps, then set their output to CABLE Input in Volume Mixer.");
+            append_notice(L"Choose open apps, then Termite will route their active audio to CABLE Input.");
             result.open_routing = true;
             break;
         case console_control::file_menu:
@@ -189,7 +193,7 @@ console_action_result console_state::activate(console_control control) {
             append_notice(grid_visible_ ? L"Graph grid enabled." : L"Graph grid disabled.");
             break;
         case console_control::help_button:
-            append_notice(L"Route an app to CABLE Input in Windows Volume Mixer.");
+            append_notice(L"Use Route apps to send an open app to CABLE Input while Termite is running.");
             break;
         default:
             break;
