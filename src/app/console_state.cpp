@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <utility>
 
 namespace termite {
 namespace {
@@ -100,7 +101,9 @@ console_action_result console_state::activate(console_control control) {
             result.profile_changed = true;
             break;
         case console_control::status_sync:
+            append_notice(L"Audio diagnostics opened.");
             result.request_engine_status = true;
+            result.open_diagnostics = true;
             break;
         case console_control::pause:
             paused_ = true;
@@ -164,10 +167,7 @@ console_action_result console_state::activate(console_control control) {
             result.profile_changed = true;
             break;
         case console_control::profile_open:
-            append_notice(L"Profile-file import is not part of v1; the working profile is saved automatically.");
-            break;
         case console_control::profile_save:
-            append_notice(L"The working profile is saved automatically.");
             break;
         case console_control::preset_cycle:
             apply_next_preset();
@@ -245,6 +245,13 @@ bool console_state::apply_preset(std::size_t index) {
     profile_ = eq_profile::preset(preset_ids[index]);
     append_notice(preset_label() + L" preset applied.");
     return true;
+}
+
+void console_state::set_profile(eq_profile profile) {
+    profile_ = std::move(profile);
+    preset_index_ = -1;
+    paused_ = false;
+    sleeping_ = false;
 }
 
 void console_state::restore_persistent_state(const console_persistent_state& settings) {

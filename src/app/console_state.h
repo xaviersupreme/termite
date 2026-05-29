@@ -59,6 +59,7 @@ public:
     bool set_fader_shape(std::size_t index, filter_shape shape);
     bool set_fader_enabled(std::size_t index, bool enabled);
     bool apply_preset(std::size_t index);
+    void set_profile(eq_profile profile);
     void restore_persistent_state(const console_persistent_state& settings);
     void set_scroll_offset(float offset) noexcept;
     void append_engine_status(const std::string& status);

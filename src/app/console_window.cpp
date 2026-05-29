@@ -6,8 +6,11 @@
 #include <cmath>
 #include <cwchar>
 #include <dwmapi.h>
+#include <ShObjIdl.h>
+#include <filesystem>
 #include <format>
 #include <numbers>
+#include <optional>
 #include <shellapi.h>
 #include <string>
 #include <string_view>
@@ -74,6 +77,43 @@ std::wstring widen(std::string_view value) {
     std::wstring result(static_cast<std::size_t>(length), L'\0');
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(), length);
     return result;
+}
+
+std::optional<std::filesystem::path> choose_profile_file(HWND owner, bool saving, std::wstring& failure_reason) {
+    Microsoft::WRL::ComPtr<IFileDialog> dialog;
+    const auto result = CoCreateInstance(saving ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                         IID_PPV_ARGS(dialog.GetAddressOf()));
+    if (FAILED(result)) {
+        failure_reason = L"Windows could not open the profile file dialog.";
+        return std::nullopt;
+    }
+    constexpr COMDLG_FILTERSPEC filters[]{{L"Termite EQ profile (*.termiteeq)", L"*.termiteeq"}, {L"All files (*.*)", L"*.*"}};
+    dialog->SetFileTypes(static_cast<UINT>(std::size(filters)), filters);
+    dialog->SetFileTypeIndex(1);
+    dialog->SetTitle(saving ? L"Save Termite EQ profile" : L"Open Termite EQ profile");
+    if (saving) {
+        dialog->SetDefaultExtension(termite_profile_extension + 1);
+        dialog->SetFileName(L"Custom profile.termiteeq");
+    }
+    const auto show_result = dialog->Show(owner);
+    if (show_result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) return std::nullopt;
+    if (FAILED(show_result)) {
+        failure_reason = L"Windows could not show the profile file dialog.";
+        return std::nullopt;
+    }
+    Microsoft::WRL::ComPtr<IShellItem> item;
+    if (FAILED(dialog->GetResult(item.GetAddressOf()))) {
+        failure_reason = L"Windows did not return a selected profile file.";
+        return std::nullopt;
+    }
+    PWSTR raw_path{};
+    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &raw_path)) || raw_path == nullptr) {
+        failure_reason = L"Windows could not read the selected profile path.";
+        return std::nullopt;
+    }
+    const std::filesystem::path path{raw_path};
+    CoTaskMemFree(raw_path);
+    return path;
 }
 
 console_visual_state visual_state_for(console_hit control, console_hit hot, console_hit pressed, bool selected = false) {
@@ -468,7 +508,8 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                                     routing_selected_[index] = false;
                                     set_routing_reminder(candidate.executable_path, false);
                                     routing_candidates_[index].routed_to_cable = false;
-                                    state_.append_engine_status(std::format("{}: {}", narrow(candidate.display_name), narrow(diagnostic)));
+                                    state_.append_engine_status(std::format("{}: {} Restart playback to move its current stream off CABLE Input.",
+                                                                            narrow(candidate.display_name), narrow(diagnostic)));
                                 } else {
                                     state_.append_engine_status(std::format("Could not unroute {}: {}", narrow(candidate.display_name), narrow(diagnostic)));
                                 }
@@ -745,10 +786,9 @@ void console_window::draw_left_bay() {
     const auto thumb = console_layout::status_scroll_thumb(notices.size(), scroll);
     skin_->draw_scrollbar(console_layout::status_scroll_track(), thumb, is_hot({console_control::scroll_thumb}), is_pressed({console_control::scroll_thumb}));
 
-    constexpr std::array labels{L"Detect", L"Reset", L"Status / Sync", L"Pause", L"Run", L"Clear info", L"Sleep", L"Default start"};
+    constexpr std::array labels{L"Reconnect", L"Diagnostics", L"Clear log"};
     constexpr std::array controls{
-        console_control::detect, console_control::reset, console_control::status_sync, console_control::pause,
-        console_control::run, console_control::clear_info, console_control::sleep, console_control::default_start,
+        console_control::detect, console_control::status_sync, console_control::clear_info,
     };
     for (std::size_t index = 0; index < labels.size(); ++index) {
         skin_->draw_button(console_layout::control_rect(controls[index]), labels[index],
@@ -965,7 +1005,7 @@ void console_window::draw_routing_picker() {
     }
 
     const auto guidance_y = frame.bottom() - routing_picker_footer_height - routing_picker_guidance_height;
-    skin_->draw_text(L"Routes are restored when you Quit Termite. Volume Mixer remains available.",
+    skin_->draw_text(L"Unroute restores the app preference. Restart playback to move an active stream.",
                      {frame.x + 9.0F, guidance_y, frame.width - 18.0F, routing_picker_guidance_height},
                      console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_button(console_layout::routing_picker_refresh_button(routing_candidates_.size()), L"Refresh",
@@ -1067,6 +1107,14 @@ void console_window::execute_control(console_hit hit) {
             sync_profile();
         }
         InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+    if (hit.control == console_control::profile_open) {
+        open_profile_file();
+        return;
+    }
+    if (hit.control == console_control::profile_save) {
+        save_profile_file();
         return;
     }
 
@@ -1277,6 +1325,40 @@ void console_window::update_scroll_from_point(console_point point) {
 void console_window::sync_profile() {
     audio_engine_.set_profile(state_.profile());
     schedule_settings_save();
+}
+
+void console_window::open_profile_file() {
+    std::wstring failure_reason;
+    const auto path = choose_profile_file(window_, false, failure_reason);
+    if (!path.has_value()) {
+        if (!failure_reason.empty()) state_.append_engine_status(narrow(failure_reason));
+        return;
+    }
+    const auto loaded = settings_store::load_profile_file(*path);
+    if (!loaded.loaded) {
+        state_.append_engine_status(narrow(loaded.notice));
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+    state_.set_profile(loaded.profile);
+    sync_profile();
+    state_.append_engine_status(std::format("Loaded profile: {}", narrow(path->filename().wstring())));
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void console_window::save_profile_file() {
+    std::wstring failure_reason;
+    const auto path = choose_profile_file(window_, true, failure_reason);
+    if (!path.has_value()) {
+        if (!failure_reason.empty()) state_.append_engine_status(narrow(failure_reason));
+        return;
+    }
+    if (!settings_store::save_profile_file(*path, state_.profile(), failure_reason)) {
+        state_.append_engine_status(narrow(failure_reason));
+    } else {
+        state_.append_engine_status(std::format("Saved profile: {}", narrow(path->filename().wstring())));
+    }
+    InvalidateRect(window_, nullptr, FALSE);
 }
 
 void console_window::show_routing_picker() {

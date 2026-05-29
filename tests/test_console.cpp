@@ -54,13 +54,8 @@ void test_hit_testing() {
 
     constexpr termite::console_control left_controls[]{
         termite::console_control::detect,
-        termite::console_control::reset,
         termite::console_control::status_sync,
-        termite::console_control::pause,
-        termite::console_control::run,
         termite::console_control::clear_info,
-        termite::console_control::sleep,
-        termite::console_control::default_start,
     };
     for (const auto control : left_controls) {
         const auto rect = termite::console_layout::control_rect(control);
@@ -167,9 +162,10 @@ void test_derived_console_geometry() {
     assert(grid.right() <= fader_bank.right());
     assert(fader_bank.right() - grid.right() < 1.0F);
     const auto detect = termite::console_layout::control_rect(termite::console_control::detect);
-    const auto reset = termite::console_layout::control_rect(termite::console_control::reset);
     const auto sync = termite::console_layout::control_rect(termite::console_control::status_sync);
-    assert(std::abs((reset.x - detect.right()) - (sync.x - reset.right())) < 0.001F);
+    const auto clear_log = termite::console_layout::control_rect(termite::console_control::clear_info);
+    assert(std::abs((sync.x - detect.right()) - (clear_log.x - sync.right())) < 0.001F);
+    assert(termite::console_layout::control_rect(termite::console_control::reset).width == 0.0F);
 
     const auto picker = termite::console_layout::routing_picker_frame(9);
     assert(picker.width > 0.0F && picker.height > 0.0F);
@@ -231,6 +227,24 @@ void test_settings_store() {
     assert(loaded.settings.window.valid);
     assert(loaded.settings.routing_executables.size() == 2);
 
+    const auto profile_path = std::filesystem::temp_directory_path() / "termite-custom-profile.termiteeq";
+    std::filesystem::remove(profile_path, error);
+    auto custom_profile = termite::eq_profile::flat();
+    custom_profile.enabled = false;
+    custom_profile.preamp_db = -4.0F;
+    custom_profile.bands[2].shape = termite::filter_shape::low_shelf;
+    custom_profile.bands[2].gain_db = 8.5F;
+    custom_profile.bands[2].q = 0.7F;
+    assert(termite::settings_store::save_profile_file(profile_path, custom_profile, failure));
+    const auto custom_loaded = termite::settings_store::load_profile_file(profile_path);
+    assert(custom_loaded.loaded);
+    assert(!custom_loaded.profile.enabled);
+    assert(std::abs(custom_loaded.profile.preamp_db + 4.0F) < 0.001F);
+    assert(custom_loaded.profile.bands[2].shape == termite::filter_shape::low_shelf);
+    assert(std::abs(custom_loaded.profile.bands[2].gain_db - 8.5F) < 0.001F);
+    assert(std::abs(custom_loaded.profile.bands[2].q - 0.7F) < 0.001F);
+    std::filesystem::remove(profile_path, error);
+
     settings.console.profile.bands[4].gain_db = 999.0F;
     settings.console.profile.bands[4].q = 99.0F;
     settings.console.profile.preamp_db = -99.0F;
@@ -280,6 +294,10 @@ void test_console_commands() {
     assert(enable.profile_changed);
     assert(state.profile().enabled);
 
+    const auto status = state.activate(termite::console_control::status_sync);
+    assert(status.request_engine_status);
+    assert(status.open_diagnostics);
+
     assert(state.set_fader_gain(0, 8.0F));
     assert(std::abs(state.profile().bands[0].gain_db - 8.0F) < 0.01F);
     const auto reset = state.activate(termite::console_control::reset);
@@ -311,6 +329,13 @@ void test_console_commands() {
     assert(state.preset_label() == L"Treble cut");
     assert(!state.apply_preset(termite::console_state::preset_count()));
 
+    auto custom_profile = termite::eq_profile::flat();
+    custom_profile.enabled = false;
+    custom_profile.bands[3].gain_db = 6.5F;
+    state.set_profile(custom_profile);
+    assert(!state.profile().enabled);
+    assert(std::abs(state.profile().bands[3].gain_db - 6.5F) < 0.01F);
+
     const auto grid = state.grid_visible();
     state.activate(termite::console_control::grid);
     assert(state.grid_visible() != grid);
@@ -336,13 +361,8 @@ void test_every_visible_command() {
         termite::console_control::themes_menu,
         termite::console_control::help_menu,
         termite::console_control::detect,
-        termite::console_control::reset,
         termite::console_control::status_sync,
-        termite::console_control::pause,
-        termite::console_control::run,
         termite::console_control::clear_info,
-        termite::console_control::sleep,
-        termite::console_control::default_start,
         termite::console_control::equalizer_off,
         termite::console_control::equalizer_on,
         termite::console_control::blender_increase,

@@ -253,32 +253,53 @@ void write_string(std::ostringstream& output, std::string_view value) {
     output.put('"');
 }
 
-[[nodiscard]] bool decode_settings(const json_value& root, termite_settings& result) {
-    int version{};
-    if (!read_int(member(root, "version"), version) || version != 1) return false;
-    const auto* profile = member(root, "profile");
-    const auto* bands = profile == nullptr ? nullptr : member(*profile, "bands");
-    if (profile == nullptr || profile->kind != json_kind::object || bands == nullptr || bands->kind != json_kind::array || bands->array.size() != graphic_band_count) return false;
+[[nodiscard]] bool decode_profile_object(const json_value& value, eq_profile& result) {
+    const auto* bands = member(value, "bands");
+    if (value.kind != json_kind::object || bands == nullptr || bands->kind != json_kind::array || bands->array.size() != graphic_band_count) return false;
 
-    console_persistent_state state;
-    if (!read_boolean(member(*profile, "enabled"), state.profile.enabled)) return false;
-    double value{};
-    if (!read_number(member(*profile, "preamp_db"), value)) return false;
-    state.profile.preamp_db = std::clamp(static_cast<float>(value), -24.0F, 12.0F);
-    if (!read_number(member(*profile, "limiter_ceiling_db"), value)) return false;
-    state.profile.limiter_ceiling_db = std::clamp(static_cast<float>(value), -12.0F, 0.0F);
+    eq_profile profile = eq_profile::flat();
+    if (!read_boolean(member(value, "enabled"), profile.enabled)) return false;
+    double number{};
+    if (!read_number(member(value, "preamp_db"), number)) return false;
+    profile.preamp_db = std::clamp(static_cast<float>(number), -24.0F, 12.0F);
+    if (!read_number(member(value, "limiter_ceiling_db"), number)) return false;
+    profile.limiter_ceiling_db = std::clamp(static_cast<float>(number), -12.0F, 0.0F);
     for (std::size_t index = 0; index < graphic_band_count; ++index) {
         const auto& band_value = bands->array[index];
         if (band_value.kind != json_kind::object) return false;
-        auto& band = state.profile.bands[index];
+        auto& band = profile.bands[index];
         int shape{};
-        if (!read_int(member(band_value, "shape"), shape) || !read_number(member(band_value, "gain_db"), value)) return false;
+        if (!read_int(member(band_value, "shape"), shape) || !read_number(member(band_value, "gain_db"), number)) return false;
         band.shape = shape >= 0 && shape <= static_cast<int>(filter_shape::notch) ? static_cast<filter_shape>(shape) : filter_shape::peaking;
-        band.gain_db = std::clamp(static_cast<float>(value), -20.0F, 20.0F);
-        if (!read_number(member(band_value, "q"), value) || !read_boolean(member(band_value, "enabled"), band.enabled)) return false;
-        band.q = std::clamp(static_cast<float>(value), 0.15F, 12.0F);
+        band.gain_db = std::clamp(static_cast<float>(number), -20.0F, 20.0F);
+        if (!read_number(member(band_value, "q"), number) || !read_boolean(member(band_value, "enabled"), band.enabled)) return false;
+        band.q = std::clamp(static_cast<float>(number), 0.15F, 12.0F);
         band.frequency_hz = graphic_band_frequencies[index];
     }
+    result = profile;
+    return true;
+}
+
+void encode_profile_object(std::ostringstream& output, const eq_profile& profile, std::string_view indent) {
+    output << indent << "\"enabled\": " << (profile.enabled ? "true" : "false")
+           << ",\n" << indent << "\"preamp_db\": " << profile.preamp_db
+           << ",\n" << indent << "\"limiter_ceiling_db\": " << profile.limiter_ceiling_db
+           << ",\n" << indent << "\"bands\": [\n";
+    for (std::size_t index = 0; index < graphic_band_count; ++index) {
+        const auto& band = profile.bands[index];
+        output << indent << "  {\"shape\": " << static_cast<int>(band.shape) << ", \"gain_db\": " << band.gain_db
+               << ", \"q\": " << band.q << ", \"enabled\": " << (band.enabled ? "true" : "false") << "}";
+        output << (index + 1 == graphic_band_count ? "\n" : ",\n");
+    }
+    output << indent << "]";
+}
+
+[[nodiscard]] bool decode_settings(const json_value& root, termite_settings& result) {
+    int version{};
+    if (!read_int(member(root, "version"), version) || version != 1) return false;
+    console_persistent_state state;
+    const auto* profile = member(root, "profile");
+    if (profile == nullptr || !decode_profile_object(*profile, state.profile)) return false;
 
     const auto* ui = member(root, "ui");
     int background{};
@@ -337,6 +358,23 @@ void write_string(std::ostringstream& output, std::string_view value) {
     return output.str();
 }
 
+[[nodiscard]] bool decode_profile_file(const json_value& root, eq_profile& result) {
+    int version{};
+    const auto* format = member(root, "format");
+    const auto* profile = member(root, "profile");
+    return format != nullptr && format->kind == json_kind::string && format->string == "termite-eq-profile" &&
+           read_int(member(root, "version"), version) && version == 1 && profile != nullptr && decode_profile_object(*profile, result);
+}
+
+[[nodiscard]] std::string encode_profile_file(const eq_profile& profile) {
+    std::ostringstream output;
+    output.precision(9);
+    output << "{\n  \"format\": \"termite-eq-profile\",\n  \"version\": 1,\n  \"profile\": {\n";
+    encode_profile_object(output, profile, "    ");
+    output << "\n  }\n}\n";
+    return output.str();
+}
+
 }  // namespace
 
 settings_store::settings_store(std::filesystem::path path) : path_(std::move(path)) {}
@@ -390,6 +428,52 @@ bool settings_store::save(const termite_settings& settings, std::wstring& failur
     if (!MoveFileExW(temporary.c_str(), path_.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         std::filesystem::remove(std::filesystem::path(temporary), error);
         failure_reason = L"Could not replace Termite settings.";
+        return false;
+    }
+    return true;
+}
+
+profile_load_result settings_store::load_profile_file(const std::filesystem::path& path) {
+    profile_load_result result;
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        result.notice = L"Could not open the selected Termite EQ profile.";
+        return result;
+    }
+    const std::string source((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    json_value root;
+    if (source.empty() || !json_reader(source).parse(root) || !decode_profile_file(root, result.profile)) {
+        result.notice = L"That file is not a valid Termite EQ profile.";
+        return result;
+    }
+    result.loaded = true;
+    return result;
+}
+
+bool settings_store::save_profile_file(const std::filesystem::path& path, const eq_profile& profile, std::wstring& failure_reason) {
+    std::error_code error;
+    if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path(), error);
+    if (error) {
+        failure_reason = L"Could not create the selected profile folder.";
+        return false;
+    }
+    const auto temporary = path.wstring() + L".tmp";
+    {
+        std::ofstream output(std::filesystem::path(temporary), std::ios::binary | std::ios::trunc);
+        if (!output) {
+            failure_reason = L"Could not write the Termite EQ profile.";
+            return false;
+        }
+        output << encode_profile_file(profile);
+        output.flush();
+        if (!output) {
+            failure_reason = L"Could not finish writing the Termite EQ profile.";
+            return false;
+        }
+    }
+    if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::filesystem::remove(std::filesystem::path(temporary), error);
+        failure_reason = L"Could not replace the Termite EQ profile.";
         return false;
     }
     return true;
