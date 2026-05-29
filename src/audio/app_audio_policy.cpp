@@ -302,15 +302,21 @@ bool app_audio_policy::route_executable_to_cable(const std::wstring& executable_
 bool app_audio_policy::restore_executable_route(const app_audio_route_snapshot& previous_route,
                                                  std::wstring& diagnostic) const {
     if (previous_route.executable_path.empty()) return true;
-    std::vector<DWORD> processes;
+    std::set<DWORD> process_ids;
     for (const auto process_id : previous_route.process_ids) {
         if (paths_match(process_path(process_id), previous_route.executable_path)) {
-            processes.push_back(process_id);
+            process_ids.insert(process_id);
         }
     }
-    if (processes.empty()) processes = active_audio_processes_for_executable(previous_route.executable_path);
+    // Browser and media apps can create their actual render client after the
+    // route was applied. Restore every current audio process as well as the
+    // original snapshot so those later streams do not remain on CABLE Input.
+    for (const auto process_id : active_audio_processes_for_executable(previous_route.executable_path)) {
+        process_ids.insert(process_id);
+    }
+    const std::vector<DWORD> processes{process_ids.begin(), process_ids.end()};
     if (processes.empty()) {
-        diagnostic = L"The routed audio process has already exited. Start the app again, then quit Termite to clear its saved route.";
+        diagnostic = L"The routed process has already exited. Its per-process route will not affect a new app instance.";
         return false;
     }
     const auto factory = open_policy_factory(diagnostic);

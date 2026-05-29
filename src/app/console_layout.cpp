@@ -71,21 +71,14 @@ constexpr float left_button_gap = 6.0F;
 constexpr float left_button_width = (left_button_rail_width - left_button_gap * 2.0F) / 3.0F;
 constexpr float left_button_height = 25.0F;
 constexpr float left_button_first_y = status_box.y + status_box.height + 36.0F;
-constexpr float left_button_row_gap = 7.0F;
-constexpr std::array<console_rect, 8> left_buttons{{
+constexpr std::array<console_rect, 3> left_buttons{{
     {left_button_rail_left, left_button_first_y, left_button_width, left_button_height},
     {left_button_rail_left + left_button_width + left_button_gap, left_button_first_y, left_button_width, left_button_height},
     {left_button_rail_left + (left_button_width + left_button_gap) * 2.0F, left_button_first_y, left_button_width, left_button_height},
-    {left_button_rail_left, left_button_first_y + left_button_height + left_button_row_gap, left_button_width, left_button_height},
-    {left_button_rail_left + left_button_width + left_button_gap, left_button_first_y + left_button_height + left_button_row_gap, left_button_width, left_button_height},
-    {left_button_rail_left + (left_button_width + left_button_gap) * 2.0F, left_button_first_y + left_button_height + left_button_row_gap, left_button_width, left_button_height},
-    {left_button_rail_left, left_button_first_y + (left_button_height + left_button_row_gap) * 2.0F, left_button_width, left_button_height},
-    {left_button_rail_left + left_button_width + left_button_gap, left_button_first_y + (left_button_height + left_button_row_gap) * 2.0F, left_button_width, left_button_height},
 }};
 
-constexpr std::array<console_control, 8> left_button_controls{{
-    console_control::detect, console_control::reset, console_control::status_sync, console_control::pause,
-    console_control::run, console_control::clear_info, console_control::sleep, console_control::default_start,
+constexpr std::array<console_control, 3> left_button_controls{{
+    console_control::detect, console_control::status_sync, console_control::clear_info,
 }};
 
 float logarithmic_fraction(float value, float low, float high) noexcept {
@@ -436,13 +429,8 @@ console_rect console_layout::control_rect(console_control control) noexcept {
         case console_control::themes_menu: return {106.0F, 27.0F, 44.0F, 19.0F};
         case console_control::help_menu: return {154.0F, 27.0F, 29.0F, 19.0F};
         case console_control::detect: return left_buttons[0];
-        case console_control::reset: return left_buttons[1];
-        case console_control::status_sync: return left_buttons[2];
-        case console_control::pause: return left_buttons[3];
-        case console_control::run: return left_buttons[4];
-        case console_control::clear_info: return left_buttons[5];
-        case console_control::sleep: return left_buttons[6];
-        case console_control::default_start: return left_buttons[7];
+        case console_control::status_sync: return left_buttons[1];
+        case console_control::clear_info: return left_buttons[2];
         case console_control::equalizer_off: {
             const auto toggle = equalizer_toggle();
             return {toggle.x, toggle.y, toggle.width * 0.5F, toggle.height};

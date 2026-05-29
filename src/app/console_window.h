@@ -58,6 +58,8 @@ private:
     void show_fader_filter_menu(int band, console_point anchor);
     void execute_fader_filter_menu_row(int row);
     void sync_profile();
+    void open_profile_file();
+    void save_profile_file();
     void show_routing_picker();
     void refresh_routing_picker();
     void route_selected_apps();
