@@ -748,22 +748,9 @@ void console_window::draw_console() {
 
 void console_window::draw_title_and_menu() {
     skin_->draw_title_bar(console_layout::title_bar());
-    skin_->draw_panel(console_layout::menu_bar(), true);
     skin_->draw_panel(console_layout::title_icon());
     skin_->draw_title_icon(console_layout::title_icon());
     skin_->draw_text(L"Termite", console_layout::title_label(), console_text_style::title);
-
-    const std::array menus{
-        std::pair{console_control::file_menu, L"File"},
-        std::pair{console_control::hardware_menu, L"Hardware"},
-        std::pair{console_control::themes_menu, L"Themes"},
-        std::pair{console_control::help_menu, L"Help"},
-    };
-    for (const auto& [control, label] : menus) {
-        skin_->draw_text(label, console_layout::control_rect(control), console_text_style::menu,
-                         DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
-                         is_hot({control}) ? D2D1::ColorF(0.56F, 0.78F, 1.0F) : D2D1::ColorF(0.91F, 0.92F, 0.93F));
-    }
 
     skin_->draw_caption_button(console_layout::minimize_button(), L"-", visual_state_for({console_control::minimize}, hot_hit_, pressed_hit_));
     skin_->draw_caption_button(console_layout::close_button(), L"X", visual_state_for({console_control::close}, hot_hit_, pressed_hit_));
@@ -799,17 +786,6 @@ void console_window::draw_left_bay() {
     skin_->draw_group(equalizer);
     skin_->draw_text(L"Equalizer", console_layout::equalizer_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
     skin_->draw_equalizer_toggle(console_layout::equalizer_toggle(), state_.profile().enabled);
-
-    skin_->draw_group(console_layout::group_rect(console_group::blender));
-    skin_->draw_text(L"Blender mix", console_layout::blender_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
-    skin_->draw_text(L"Dry", console_layout::blender_dry_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
-    skin_->draw_text(L"Wet", console_layout::blender_wet_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
-    skin_->draw_panel(console_layout::blender_dry_display());
-    skin_->draw_panel(console_layout::blender_wet_display());
-    skin_->draw_display_number(std::format(L"{:03}", state_.dry_mix()), console_layout::blender_dry_display());
-    skin_->draw_display_number(std::format(L"{:03}", state_.wet_mix()), console_layout::blender_wet_display());
-    skin_->draw_button(console_layout::control_rect(console_control::blender_increase), L"Increase mix", visual_state_for({console_control::blender_increase}, hot_hit_, pressed_hit_));
-    skin_->draw_button(console_layout::control_rect(console_control::blender_decrease), L"Decrease mix", visual_state_for({console_control::blender_decrease}, hot_hit_, pressed_hit_));
 
     skin_->draw_group(console_layout::group_rect(console_group::digital_volume));
     skin_->draw_text(L"Digital volume", console_layout::digital_volume_label(), console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -906,8 +882,7 @@ void console_window::draw_bottom_controls() {
     };
     draw_labeled_group(console_layout::group_rect(console_group::profiles), L"Profiles");
     draw_labeled_group(console_layout::group_rect(console_group::presets), L"Pre-sets");
-    draw_labeled_group(console_layout::group_rect(console_group::smoothing), L"Smoothing");
-    draw_labeled_group(console_layout::group_rect(console_group::termite_control), L"Termite control");
+    draw_labeled_group(console_layout::group_rect(console_group::termite_control), L"App routing");
 
     skin_->draw_button(console_layout::control_rect(console_control::profile_open), L"Open profile", visual_state_for({console_control::profile_open}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::profile_save), L"Save profile", visual_state_for({console_control::profile_save}, hot_hit_, pressed_hit_));
@@ -915,15 +890,8 @@ void console_window::draw_bottom_controls() {
     skin_->draw_combo_box(console_layout::control_rect(console_control::preset_cycle), state_.preset_label(), preset_dropdown_open_,
                           preset_dropdown_open_ ? console_visual_state::selected
                                                 : visual_state_for({console_control::preset_cycle}, hot_hit_, pressed_hit_));
-    skin_->draw_button(console_layout::control_rect(console_control::smoothing_reset), L"Reset", visual_state_for({console_control::smoothing_reset}, hot_hit_, pressed_hit_));
-    skin_->draw_button(console_layout::control_rect(console_control::smoothing_decrease), L"-", visual_state_for({console_control::smoothing_decrease}, hot_hit_, pressed_hit_));
-    skin_->draw_panel(console_layout::smoothing_value());
-    skin_->draw_display_number(std::format(L"{:02}", state_.smoothing_amount()), console_layout::smoothing_value());
-    skin_->draw_button(console_layout::control_rect(console_control::smoothing_increase), L"+", visual_state_for({console_control::smoothing_increase}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::route_apps), L"Route apps", visual_state_for({console_control::route_apps}, hot_hit_, pressed_hit_));
-    skin_->draw_button(console_layout::control_rect(console_control::export_response), L"Export response", visual_state_for({console_control::export_response}, hot_hit_, pressed_hit_));
     skin_->draw_checkbox(console_layout::control_rect(console_control::grid), state_.grid_visible(), L"Grid");
-    skin_->draw_button(console_layout::control_rect(console_control::help_button), L"Help", visual_state_for({console_control::help_button}, hot_hit_, pressed_hit_));
 }
 
 void console_window::draw_preset_dropdown() {
