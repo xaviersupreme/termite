@@ -160,6 +160,21 @@ std::wstring hresult_text(HRESULT result) {
     return std::format(L"0x{:08X}", static_cast<unsigned long>(result));
 }
 
+std::optional<std::wstring> policy_endpoint_id(IMMDevice& device, std::wstring& diagnostic) {
+    LPWSTR raw_id = nullptr;
+    const auto id_result = device.GetId(&raw_id);
+    if (FAILED(id_result) || raw_id == nullptr) {
+        diagnostic = std::format(L"Could not read the Windows endpoint id ({})", hresult_text(id_result));
+        return std::nullopt;
+    }
+    std::wstring id{raw_id};
+    CoTaskMemFree(raw_id);
+    // The policy component consumes the same device-interface path that
+    // Windows stores under DefaultEndpoint, not IMMDevice::GetId()'s shorter
+    // endpoint key.
+    return std::format(L"\\\\?\\SWD#MMDEVAPI#{}#{{e6327cad-dcec-4949-ae8a-991e976a79d2}}", id);
+}
+
 std::optional<std::wstring> cable_input_endpoint_id(std::wstring& diagnostic) {
     IMMDeviceEnumerator* raw_enumerator = nullptr;
     const auto create_result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&raw_enumerator));
@@ -192,21 +207,28 @@ std::optional<std::wstring> cable_input_endpoint_id(std::wstring& diagnostic) {
         PropVariantClear(&name);
         if (!is_cable_input) continue;
 
-        LPWSTR raw_id = nullptr;
-        const auto id_result = device->GetId(&raw_id);
-        if (FAILED(id_result) || raw_id == nullptr) {
-            diagnostic = std::format(L"Could not read CABLE Input's endpoint id ({})", hresult_text(id_result));
-            return std::nullopt;
-        }
-        std::wstring id{raw_id};
-        CoTaskMemFree(raw_id);
-        // The policy component consumes the same device-interface path that
-        // Windows stores under DefaultEndpoint, not IMMDevice::GetId()'s
-        // shorter endpoint key.
-        return std::format(L"\\\\?\\SWD#MMDEVAPI#{}#{{e6327cad-dcec-4949-ae8a-991e976a79d2}}", id);
+        return policy_endpoint_id(*device, diagnostic);
     }
     diagnostic = L"CABLE Input is not an active Windows output device.";
     return std::nullopt;
+}
+
+std::optional<std::wstring> default_render_endpoint_id(ERole role, std::wstring& diagnostic) {
+    IMMDeviceEnumerator* raw_enumerator = nullptr;
+    const auto create_result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&raw_enumerator));
+    if (FAILED(create_result)) {
+        diagnostic = std::format(L"Could not enumerate the Windows default output ({})", hresult_text(create_result));
+        return std::nullopt;
+    }
+    const auto enumerator = adopt_com(raw_enumerator);
+    IMMDevice* raw_device = nullptr;
+    const auto endpoint_result = enumerator->GetDefaultAudioEndpoint(eRender, role, &raw_device);
+    if (FAILED(endpoint_result) || raw_device == nullptr) {
+        diagnostic = std::format(L"Windows has no default output for this app role ({})", hresult_text(endpoint_result));
+        return std::nullopt;
+    }
+    const auto device = adopt_com(raw_device);
+    return policy_endpoint_id(*device, diagnostic);
 }
 
 com_ptr<audio_policy_config_factory> open_policy_factory(std::wstring& diagnostic) {
@@ -284,15 +306,10 @@ bool app_audio_policy::route_executable_to_cable(const std::wstring& executable_
 
     previous_route = {};
     previous_route.executable_path = executable_path;
-    previous_route.process_ids.assign(processes.begin(), processes.end());
-    const auto console = get_endpoint_preference(*factory, processes.front(), eConsole);
-    const auto multimedia = get_endpoint_preference(*factory, processes.front(), eMultimedia);
-    previous_route.had_console_endpoint = console.assigned;
-    previous_route.console_endpoint_id = console.endpoint_id;
-    previous_route.had_multimedia_endpoint = multimedia.assigned;
-    previous_route.multimedia_endpoint_id = multimedia.endpoint_id;
-
     for (const auto process_id : processes) {
+        const auto console = get_endpoint_preference(*factory, process_id, eConsole);
+        const auto multimedia = get_endpoint_preference(*factory, process_id, eMultimedia);
+        previous_route.processes.push_back({process_id, console.endpoint_id, multimedia.endpoint_id, console.assigned, multimedia.assigned});
         if (!set_all_render_roles(*factory, process_id, &*cable_endpoint, &*cable_endpoint, diagnostic)) return false;
     }
     diagnostic = std::format(L"Routed {} running process{} to CABLE Input.", processes.size(), processes.size() == 1 ? L"" : L"es");
@@ -303,9 +320,9 @@ bool app_audio_policy::restore_executable_route(const app_audio_route_snapshot& 
                                                  std::wstring& diagnostic) const {
     if (previous_route.executable_path.empty()) return true;
     std::set<DWORD> process_ids;
-    for (const auto process_id : previous_route.process_ids) {
-        if (paths_match(process_path(process_id), previous_route.executable_path)) {
-            process_ids.insert(process_id);
+    for (const auto& process : previous_route.processes) {
+        if (paths_match(process_path(process.process_id), previous_route.executable_path)) {
+            process_ids.insert(process.process_id);
         }
     }
     // Browser and media apps can create their actual render client after the
@@ -316,18 +333,53 @@ bool app_audio_policy::restore_executable_route(const app_audio_route_snapshot& 
     }
     const std::vector<DWORD> processes{process_ids.begin(), process_ids.end()};
     if (processes.empty()) {
-        diagnostic = L"The routed process has already exited. Its per-process route will not affect a new app instance.";
-        return false;
+        diagnostic = L"The routed process has already exited, so it cannot remain routed through Termite.";
+        return true;
     }
     const auto factory = open_policy_factory(diagnostic);
     if (factory == nullptr) return false;
 
-    const std::wstring* console = previous_route.had_console_endpoint ? &previous_route.console_endpoint_id : nullptr;
-    const std::wstring* multimedia = previous_route.had_multimedia_endpoint ? &previous_route.multimedia_endpoint_id : nullptr;
+    // Passing nullptr only clears the saved preference. It does not reliably
+    // move an already-open WASAPI stream away from CABLE Input. Explicitly
+    // target the original endpoint, or the current Windows default when the
+    // app had no earlier preference, so Windows receives a real device change.
+    const auto default_console = default_render_endpoint_id(eConsole, diagnostic);
+    if (!default_console.has_value()) return false;
+    const auto default_multimedia = default_render_endpoint_id(eMultimedia, diagnostic);
+    if (!default_multimedia.has_value()) return false;
+
     for (const auto process_id : processes) {
+        const auto snapshot = std::find_if(previous_route.processes.begin(), previous_route.processes.end(), [process_id](const app_audio_process_route_snapshot& value) {
+            return value.process_id == process_id;
+        });
+        const std::wstring* console = snapshot != previous_route.processes.end() && snapshot->had_console_endpoint
+                                          ? &snapshot->console_endpoint_id
+                                          : &*default_console;
+        const std::wstring* multimedia = snapshot != previous_route.processes.end() && snapshot->had_multimedia_endpoint
+                                             ? &snapshot->multimedia_endpoint_id
+                                             : &*default_multimedia;
         if (!set_all_render_roles(*factory, process_id, console, multimedia, diagnostic)) return false;
     }
-    diagnostic = L"Restored the app's previous Windows output preference.";
+
+    std::wstring cable_diagnostic;
+    const auto cable_endpoint = cable_input_endpoint_id(cable_diagnostic);
+    if (cable_endpoint.has_value()) {
+        std::size_t still_routed{};
+        for (const auto process_id : processes) {
+            const auto console = get_endpoint_preference(*factory, process_id, eConsole);
+            const auto multimedia = get_endpoint_preference(*factory, process_id, eMultimedia);
+            if ((console.assigned && paths_match(console.endpoint_id, *cable_endpoint)) ||
+                (multimedia.assigned && paths_match(multimedia.endpoint_id, *cable_endpoint))) {
+                ++still_routed;
+            }
+        }
+        if (still_routed != 0) {
+            diagnostic = std::format(L"Windows still reports {} process{} on CABLE Input.", still_routed, still_routed == 1 ? L"" : L"es");
+            return false;
+        }
+    }
+
+    diagnostic = L"Moved the app to its previous output or the current Windows default.";
     return true;
 }
 

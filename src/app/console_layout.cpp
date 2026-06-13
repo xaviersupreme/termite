@@ -12,7 +12,7 @@ namespace {
 constexpr console_rect title_box{0.0F, 0.0F, console_design_width, 24.0F};
 constexpr console_rect title_icon_box{6.0F, 4.0F, 15.0F, 15.0F};
 constexpr console_rect title_label_box{27.0F, 3.0F, 220.0F, 18.0F};
-constexpr console_rect menu_box{0.0F, 24.0F, console_design_width, 24.0F};
+constexpr console_rect menu_box{0.0F, 24.0F, console_design_width, 0.0F};
 constexpr float left_bay_width = 277.0F;
 constexpr console_rect left_bay_box{0.0F, menu_box.y + menu_box.height, left_bay_width, console_design_height - (menu_box.y + menu_box.height)};
 
@@ -31,9 +31,9 @@ constexpr float graph_first_band_hz = graphic_band_frequencies.front();
 constexpr float graph_last_band_hz = graphic_band_frequencies.back();
 constexpr float graph_frequency_max_hz = 18000.0F;
 
-constexpr console_rect equalizer_box{37.0F, 400.0F, 112.0F, 59.0F};
-constexpr console_rect blender_box{37.0F, 476.0F, 110.0F, 172.0F};
-constexpr console_rect digital_volume_box{169.0F, 400.0F, 96.0F, 248.0F};
+constexpr console_rect equalizer_box{37.0F, 376.0F, 112.0F, 59.0F};
+constexpr console_rect blender_box{};
+constexpr console_rect digital_volume_box{37.0F, 452.0F, 228.0F, 172.0F};
 
 constexpr float fader_track_width = 25.0F;
 constexpr float fader_arrow_width = 29.0F;
@@ -201,9 +201,9 @@ console_rect console_layout::group_rect(console_group group) noexcept {
         case console_group::digital_volume: return digital_volume_box;
         // Bottom boundaries fall midway between fader columns. This keeps the
         // group frames on the same shared vertical grid as the EQ itself.
-        case console_group::profiles: return bottom_group_rect(2, 4);
-        case console_group::presets: return bottom_group_rect(5, 7);
-        case console_group::smoothing: return bottom_group_rect(8, 11);
+        case console_group::profiles: return bottom_group_rect(2, 6);
+        case console_group::presets: return bottom_group_rect(7, 11);
+        case console_group::smoothing: return {};
         case console_group::termite_control: return bottom_group_rect(12, 17);
     }
     return {};
@@ -449,11 +449,11 @@ console_rect console_layout::control_rect(console_control control) noexcept {
         }
         case console_control::volume_up: {
             constexpr float inset = 7.0F;
-            return {digital_volume_box.x + inset, digital_volume_box.y + 66.0F, digital_volume_box.width - inset * 2.0F, 82.0F};
+            return {digital_volume_box.x + inset, digital_volume_box.y + 63.0F, digital_volume_box.width - inset * 2.0F, 48.0F};
         }
         case console_control::volume_down: {
             constexpr float inset = 7.0F;
-            return {digital_volume_box.x + inset, digital_volume_box.y + 157.0F, digital_volume_box.width - inset * 2.0F, 82.0F};
+            return {digital_volume_box.x + inset, digital_volume_box.y + 118.0F, digital_volume_box.width - inset * 2.0F, 48.0F};
         }
         case console_control::profile_open: {
             constexpr float button_width = 96.0F;
@@ -494,10 +494,8 @@ console_rect console_layout::control_rect(console_control control) noexcept {
         }
         case console_control::route_apps: {
             constexpr float inset = 12.0F;
-            constexpr float gap = 6.0F;
             const auto termite_control = group_rect(console_group::termite_control);
-            const float width = (termite_control.width - inset * 2.0F - gap) * 0.5F;
-            return {termite_control.x + inset, termite_control.y + 16.0F, width, 25.0F};
+            return {termite_control.x + inset, termite_control.y + 28.0F, termite_control.width - inset * 2.0F, 25.0F};
         }
         case console_control::export_response: {
             constexpr float inset = 12.0F;
@@ -509,7 +507,7 @@ console_rect console_layout::control_rect(console_control control) noexcept {
         case console_control::grid: {
             constexpr float utility_gap = 8.0F;
             const auto termite_control = group_rect(console_group::termite_control);
-            return {termite_control.right() + utility_gap, termite_control.y + 16.0F, 70.0F, 25.0F};
+            return {termite_control.right() + utility_gap, termite_control.y + 28.0F, 70.0F, 25.0F};
         }
         case console_control::help_button: {
             constexpr float utility_gap = 8.0F;
@@ -537,12 +535,9 @@ console_hit console_layout::hit_test(console_point point, std::size_t message_co
     }
 
     constexpr std::array controls{
-        console_control::file_menu, console_control::hardware_menu, console_control::themes_menu, console_control::help_menu,
-        console_control::equalizer_off, console_control::equalizer_on, console_control::blender_increase, console_control::blender_decrease,
+        console_control::equalizer_off, console_control::equalizer_on,
         console_control::volume_up, console_control::volume_down, console_control::profile_open, console_control::profile_save,
-        console_control::preset_zero, console_control::preset_cycle, console_control::smoothing_reset, console_control::smoothing_decrease,
-        console_control::smoothing_increase, console_control::route_apps, console_control::export_response,
-        console_control::grid, console_control::help_button,
+        console_control::preset_zero, console_control::preset_cycle, console_control::route_apps, console_control::grid,
     };
     for (const auto control : controls) {
         if (control_rect(control).contains(point)) return {control};

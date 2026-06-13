@@ -6,14 +6,21 @@
 namespace termite {
 
 // A snapshot of the two render roles that Windows' Volume Mixer changes for a
-// desktop application.  Empty values mean the app used the system default.
-struct app_audio_route_snapshot {
-    std::wstring executable_path;
+// single process. Empty values mean the process used the system default.
+struct app_audio_process_route_snapshot {
+    unsigned long process_id{};
     std::wstring console_endpoint_id;
     std::wstring multimedia_endpoint_id;
-    std::vector<unsigned long> process_ids;
     bool had_console_endpoint{};
     bool had_multimedia_endpoint{};
+};
+
+// An application can have several audio-rendering processes. Preserve every
+// process's original route rather than accidentally restoring all of them to
+// the first process's route.
+struct app_audio_route_snapshot {
+    std::wstring executable_path;
+    std::vector<app_audio_process_route_snapshot> processes;
 };
 
 class app_audio_policy {

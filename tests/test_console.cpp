@@ -63,6 +63,17 @@ void test_hit_testing() {
         const auto hit = termite::console_layout::hit_test({rect.x + rect.width * 0.5F, rect.y + rect.height * 0.5F}, 20, 0.0F);
         assert(hit.control == control);
     }
+
+    // Controls without an implementation are not interactive surfaces. The
+    // title no longer carries dead File/Hardware/Themes/Help menu entries.
+    for (const auto control : {termite::console_control::file_menu, termite::console_control::hardware_menu,
+                               termite::console_control::themes_menu, termite::console_control::help_menu}) {
+        const auto rect = termite::console_layout::control_rect(control);
+        const auto hit = termite::console_layout::hit_test({rect.x + rect.width * 0.5F, rect.y + rect.height * 0.5F}, 20, 0.0F);
+        assert(hit.control != control);
+    }
+    assert(termite::console_layout::group_rect(termite::console_group::blender).width == 0.0F);
+    assert(termite::console_layout::group_rect(termite::console_group::smoothing).width == 0.0F);
 }
 
 void test_title_and_menu_alignment() {
@@ -142,21 +153,14 @@ void test_derived_console_geometry() {
 
     const auto profiles = termite::console_layout::group_rect(termite::console_group::profiles);
     const auto presets = termite::console_layout::group_rect(termite::console_group::presets);
-    const auto smoothing = termite::console_layout::group_rect(termite::console_group::smoothing);
     const auto control = termite::console_layout::group_rect(termite::console_group::termite_control);
     assert(std::abs((presets.x - profiles.right()) - 6.0F) < 0.001F);
-    assert(std::abs((smoothing.x - presets.right()) - 6.0F) < 0.001F);
-    assert(std::abs((control.x - smoothing.right()) - 6.0F) < 0.001F);
+    assert(std::abs((control.x - presets.right()) - 6.0F) < 0.001F);
     const auto fader_center = [](std::size_t index) {
         const auto track = termite::console_layout::fader_track(index);
         return track.x + track.width * 0.5F;
     };
-    assert(std::abs((profiles.right() + presets.x) * 0.5F - (fader_center(4) + fader_center(5)) * 0.5F) < 0.001F);
-    assert(std::abs((presets.right() + smoothing.x) * 0.5F - (fader_center(7) + fader_center(8)) * 0.5F) < 0.001F);
-    assert(std::abs((smoothing.right() + control.x) * 0.5F - (fader_center(11) + fader_center(12)) * 0.5F) < 0.001F);
-
-    const auto smoothing_reset = termite::console_layout::control_rect(termite::console_control::smoothing_reset);
-    assert(std::abs((smoothing_reset.x + smoothing_reset.width * 0.5F) - (smoothing.x + smoothing.width * 0.5F)) < 0.001F);
+    assert(std::abs((profiles.right() + presets.x) * 0.5F - (fader_center(6) + fader_center(7)) * 0.5F) < 0.001F);
     const auto grid = termite::console_layout::control_rect(termite::console_control::grid);
     assert(grid.x >= control.right());
     assert(grid.right() <= fader_bank.right());
@@ -340,15 +344,11 @@ void test_console_commands() {
     state.activate(termite::console_control::grid);
     assert(state.grid_visible() != grid);
 
-    const auto background = state.background_index();
-    state.activate(termite::console_control::themes_menu);
-    assert(state.background_index() == background);
-
     const auto route = state.activate(termite::console_control::route_apps);
     assert(route.open_routing);
-    const auto hardware = state.activate(termite::console_control::hardware_menu);
-    assert(hardware.open_diagnostics);
-    assert(!hardware.open_routing);
+    const auto diagnostics = state.activate(termite::console_control::status_sync);
+    assert(diagnostics.open_diagnostics);
+    assert(!diagnostics.open_routing);
 }
 
 void test_every_visible_command() {
@@ -356,30 +356,19 @@ void test_every_visible_command() {
     constexpr termite::console_control controls[]{
         termite::console_control::minimize,
         termite::console_control::close,
-        termite::console_control::file_menu,
-        termite::console_control::hardware_menu,
-        termite::console_control::themes_menu,
-        termite::console_control::help_menu,
         termite::console_control::detect,
         termite::console_control::status_sync,
         termite::console_control::clear_info,
         termite::console_control::equalizer_off,
         termite::console_control::equalizer_on,
-        termite::console_control::blender_increase,
-        termite::console_control::blender_decrease,
         termite::console_control::volume_up,
         termite::console_control::volume_down,
         termite::console_control::profile_open,
         termite::console_control::profile_save,
         termite::console_control::preset_zero,
         termite::console_control::preset_cycle,
-        termite::console_control::smoothing_reset,
-        termite::console_control::smoothing_decrease,
-        termite::console_control::smoothing_increase,
         termite::console_control::route_apps,
-        termite::console_control::export_response,
         termite::console_control::grid,
-        termite::console_control::help_button,
     };
     for (const auto control : controls) {
         [[maybe_unused]] const auto result = state.activate(control);
