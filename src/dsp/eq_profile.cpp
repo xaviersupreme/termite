@@ -24,6 +24,22 @@ float clamp_q(float q) noexcept {
     return std::clamp(q, 0.15F, 12.0F);
 }
 
+eq_band bass_shelf(const tone_effects& effects) noexcept {
+    return {filter_shape::low_shelf, 95.0F, std::clamp(effects.bass_db, -12.0F, 12.0F), 0.8F, effects.bass_enabled};
+}
+
+eq_band loudness_low_shelf(const tone_effects& effects) noexcept {
+    return {filter_shape::low_shelf, 110.0F, std::clamp(effects.loudness_amount, 0.0F, 1.0F) * 8.0F, 0.7F, effects.loudness_enabled};
+}
+
+eq_band loudness_high_shelf(const tone_effects& effects) noexcept {
+    return {filter_shape::high_shelf, 6500.0F, std::clamp(effects.loudness_amount, 0.0F, 1.0F) * 4.0F, 0.7F, effects.loudness_enabled};
+}
+
+eq_band clarity_shelf(const tone_effects& effects) noexcept {
+    return {filter_shape::high_shelf, 4500.0F, std::clamp(effects.clarity_db, -8.0F, 8.0F), 0.8F, effects.clarity_enabled};
+}
+
 void apply_graphic_gains(eq_profile& profile, const std::array<float, graphic_band_count>& gains, float preamp_db) noexcept {
     for (std::size_t index = 0; index < profile.bands.size(); ++index) {
         profile.bands[index].gain_db = gains[index];
@@ -83,6 +99,18 @@ eq_profile eq_profile::preset(std::string_view preset_name) noexcept {
         constexpr std::array<float, 20> gains{0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
             -0.5F, -1.0F, -2.0F, -3.0F, -4.0F, -5.0F, -6.0F, -6.0F, -5.0F, -4.0F};
         apply_graphic_gains(profile, gains, 0.0F);
+    } else if (preset_name == "late_night") {
+        profile.effects.loudness_enabled = true;
+        profile.effects.loudness_amount = 0.62F;
+        profile.effects.bass_enabled = true;
+        profile.effects.bass_db = 2.5F;
+        profile.preamp_db = -3.0F;
+    } else if (preset_name == "wide_music") {
+        profile.effects.stereo_enabled = true;
+        profile.effects.stereo_width = 1.22F;
+        profile.effects.clarity_enabled = true;
+        profile.effects.clarity_db = 1.5F;
+        profile.preamp_db = -2.0F;
     }
     return profile;
 }
@@ -122,6 +150,13 @@ float profile_response_db(const eq_profile& profile, float sample_rate, float fr
         if (!band.enabled) continue;
         biquad_filter filter;
         filter.configure(band, sample_rate);
+        response += filter.response_db(sample_rate, frequency_hz);
+    }
+    for (const auto& effect_band : {bass_shelf(profile.effects), loudness_low_shelf(profile.effects),
+                                    loudness_high_shelf(profile.effects), clarity_shelf(profile.effects)}) {
+        if (!effect_band.enabled) continue;
+        biquad_filter filter;
+        filter.configure(effect_band, sample_rate);
         response += filter.response_db(sample_rate, frequency_hz);
     }
     return response;
@@ -265,6 +300,7 @@ void eq_processor::configure(const eq_profile& profile, float sample_rate, std::
         }
     }
     reset();
+    limiter_clamp_count_ = 0;
 }
 
 void eq_processor::reset() noexcept {
@@ -294,9 +330,96 @@ void eq_processor::process_interleaved(const float* input, float* output, std::s
                 sample = filter.process(sample);
             }
             sample *= preamp_linear_;
-            output[frame * channels_ + channel] = std::clamp(sample, -limiter_ceiling_linear_, limiter_ceiling_linear_);
+            const auto limited = std::clamp(sample, -limiter_ceiling_linear_, limiter_ceiling_linear_);
+            if (limited != sample) ++limiter_clamp_count_;
+            output[frame * channels_ + channel] = limited;
         }
     }
+}
+
+std::uint64_t eq_processor::take_limiter_clamp_count() noexcept {
+    const auto count = limiter_clamp_count_;
+    limiter_clamp_count_ = 0;
+    return count;
+}
+
+void profile_processor::configure(const eq_profile& profile, float sample_rate, std::size_t channels) noexcept {
+    profile_ = profile;
+    channels_ = std::clamp<std::size_t>(channels, 1, max_channels);
+    const auto balance = std::clamp(profile.effects.balance, -1.0F, 1.0F);
+    const auto pan = (balance + 1.0F) * static_cast<float>(pi * 0.25);
+    // sqrt(2) leaves centre at unity while preserving equal-power panning.
+    left_balance_ = std::cos(pan) * 1.41421356237F;
+    right_balance_ = std::sin(pan) * 1.41421356237F;
+    const auto bass = bass_shelf(profile.effects);
+    const auto loud_low = loudness_low_shelf(profile.effects);
+    const auto loud_high = loudness_high_shelf(profile.effects);
+    const auto clarity = clarity_shelf(profile.effects);
+    for (std::size_t channel = 0; channel < channels_; ++channel) {
+        bass_filters_[channel].configure(bass, sample_rate);
+        loudness_low_filters_[channel].configure(loud_low, sample_rate);
+        loudness_high_filters_[channel].configure(loud_high, sample_rate);
+        clarity_filters_[channel].configure(clarity, sample_rate);
+    }
+    graphic_processor_.configure(profile, sample_rate, channels_);
+    reset();
+}
+
+void profile_processor::reset() noexcept {
+    for (std::size_t channel = 0; channel < max_channels; ++channel) {
+        bass_filters_[channel].reset();
+        loudness_low_filters_[channel].reset();
+        loudness_high_filters_[channel].reset();
+        clarity_filters_[channel].reset();
+    }
+    graphic_processor_.reset();
+}
+
+void profile_processor::process_interleaved(float* samples, std::size_t frame_count) noexcept {
+    process_interleaved(samples, samples, frame_count);
+}
+
+void profile_processor::process_interleaved(const float* input, float* output, std::size_t frame_count) noexcept {
+    if (input == nullptr || output == nullptr) return;
+    if (!profile_.enabled) {
+        if (input != output) std::copy_n(input, frame_count * channels_, output);
+        return;
+    }
+    for (std::size_t frame = 0; frame < frame_count; ++frame) {
+        const auto offset = frame * channels_;
+        if (channels_ >= 2) {
+            auto left = input[offset];
+            auto right = input[offset + 1];
+            if (profile_.effects.mono) {
+                const auto mono = (left + right) * 0.5F;
+                left = mono;
+                right = mono;
+            } else if (profile_.effects.stereo_enabled) {
+                const auto mid = (left + right) * 0.5F;
+                const auto side = (left - right) * 0.5F * std::clamp(profile_.effects.stereo_width, 0.5F, 1.5F);
+                left = mid + side;
+                right = mid - side;
+            }
+            output[offset] = left * left_balance_;
+            output[offset + 1] = right * right_balance_;
+            for (std::size_t channel = 2; channel < channels_; ++channel) output[offset + channel] = input[offset + channel];
+        } else {
+            // Width and mono never manufacture stereo from a mono endpoint.
+            output[offset] = input[offset];
+        }
+        for (std::size_t channel = 0; channel < channels_; ++channel) {
+            auto sample = output[offset + channel];
+            sample = bass_filters_[channel].process(sample);
+            sample = loudness_low_filters_[channel].process(sample);
+            sample = loudness_high_filters_[channel].process(sample);
+            output[offset + channel] = clarity_filters_[channel].process(sample);
+        }
+    }
+    graphic_processor_.process_interleaved(output, output, frame_count);
+}
+
+std::uint64_t profile_processor::take_limiter_clamp_count() noexcept {
+    return graphic_processor_.take_limiter_clamp_count();
 }
 
 }  // namespace termite

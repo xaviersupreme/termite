@@ -10,6 +10,53 @@
 namespace termite {
 
 inline constexpr std::size_t audio_max_channels = 8;
+inline constexpr std::size_t audio_monitor_band_count = 48;
+
+struct audio_monitor_snapshot {
+    std::array<float, audio_monitor_band_count> input_spectrum_db{};
+    std::array<float, audio_monitor_band_count> output_spectrum_db{};
+    float input_peak_left{};
+    float input_peak_right{};
+    float input_rms_left{};
+    float input_rms_right{};
+    float output_peak_left{};
+    float output_peak_right{};
+    float output_rms_left{};
+    float output_rms_right{};
+    std::uint64_t limiter_clamp_count{};
+    bool stereo_input{};
+};
+
+[[nodiscard]] float monitor_band_frequency_hz(std::size_t index) noexcept;
+
+// Capture-side only.  Storage is fixed and configure/process never allocate.
+class audio_monitor_analyzer {
+public:
+    void configure(std::uint32_t sample_rate, std::size_t channels) noexcept;
+    void reset() noexcept;
+    [[nodiscard]] bool process(const float* input, const float* output, std::size_t frame_count,
+                               std::uint64_t limiter_clamps) noexcept;
+    [[nodiscard]] const audio_monitor_snapshot& snapshot() const noexcept;
+
+private:
+    static constexpr std::size_t fft_window_frames = 1024;
+    void analyze() noexcept;
+    void accumulate_meter(const float* source, std::size_t frame, bool input) noexcept;
+
+    std::array<float, fft_window_frames> input_window_{};
+    std::array<float, fft_window_frames> output_window_{};
+    audio_monitor_snapshot snapshot_{};
+    std::uint32_t sample_rate_{48000};
+    std::size_t channels_{2};
+    std::size_t window_write_{};
+    std::size_t captured_frames_{};
+    std::size_t frames_until_analysis_{fft_window_frames};
+    float input_square_left_{};
+    float input_square_right_{};
+    float output_square_left_{};
+    float output_square_right_{};
+    std::size_t meter_frames_{};
+};
 
 enum class sample_encoding : std::uint8_t {
     float32,

@@ -136,6 +136,30 @@ void test_endpoint_negotiation() {
     assert(termite::negotiate_endpoints(unsupported, render, false).error == termite::endpoint_negotiation_error::unsupported_capture_format);
 }
 
+void test_monitor_analyzer() {
+    termite::audio_monitor_analyzer analyzer;
+    analyzer.configure(48000, 2);
+    std::vector<float> input(4800 * 2);
+    std::vector<float> output(input.size());
+    for (std::size_t frame = 0; frame < 4800; ++frame) {
+        const auto sample = std::sin(6.28318530718F * 1000.0F * static_cast<float>(frame) / 48000.0F) * 0.5F;
+        input[frame * 2] = sample;
+        input[frame * 2 + 1] = sample;
+        output[frame * 2] = sample * 0.25F;
+        output[frame * 2 + 1] = sample * 0.25F;
+    }
+    assert(analyzer.process(input.data(), output.data(), 4800, 3));
+    const auto& snapshot = analyzer.snapshot();
+    std::size_t strongest{};
+    for (std::size_t index = 1; index < termite::audio_monitor_band_count; ++index) {
+        if (snapshot.input_spectrum_db[index] > snapshot.input_spectrum_db[strongest]) strongest = index;
+    }
+    assert(termite::monitor_band_frequency_hz(strongest) > 700.0F && termite::monitor_band_frequency_hz(strongest) < 1400.0F);
+    assert(snapshot.input_rms_left > snapshot.output_rms_left);
+    assert(snapshot.stereo_input);
+    assert(snapshot.limiter_clamp_count >= 3);
+}
+
 void test_routing_policy() {
     termite::routing_process_metadata browser{4242, true, false, true, false, L"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"};
     assert(termite::is_eligible_routing_process(browser));
@@ -171,5 +195,6 @@ int main() {
     test_resampling_and_drift();
     test_profile_crossfade();
     test_endpoint_negotiation();
+    test_monitor_analyzer();
     test_routing_policy();
 }

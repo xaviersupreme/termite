@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 
 namespace termite {
@@ -29,8 +30,24 @@ struct eq_band {
     bool enabled{true};
 };
 
+// These effects deliberately live in the profile instead of in the UI.  A
+// profile revision is therefore one complete, click-free capture-side change.
+struct tone_effects {
+    bool bass_enabled{};
+    float bass_db{};
+    bool loudness_enabled{};
+    float loudness_amount{};  // 0.0 - 1.0
+    bool clarity_enabled{};
+    float clarity_db{};
+    bool stereo_enabled{};
+    float stereo_width{1.0F}; // 0.5 - 1.5
+    bool mono{};
+    float balance{};          // -1.0 (left) - 1.0 (right)
+};
+
 struct eq_profile {
     std::array<eq_band, graphic_band_count> bands{};
+    tone_effects effects{};
     float preamp_db{};
     float limiter_ceiling_db{-1.0F};
     bool enabled{true};
@@ -74,6 +91,7 @@ public:
     void reset() noexcept;
     void process_interleaved(float* samples, std::size_t frame_count) noexcept;
     void process_interleaved(const float* input, float* output, std::size_t frame_count) noexcept;
+    [[nodiscard]] std::uint64_t take_limiter_clamp_count() noexcept;
 
 private:
     static constexpr std::size_t max_channels = 8;
@@ -82,6 +100,31 @@ private:
     std::size_t channels_{2};
     float preamp_linear_{1.0F};
     float limiter_ceiling_linear_{0.8912509F};
+    std::uint64_t limiter_clamp_count_{};
+};
+
+// The complete capture-side processing chain.  It keeps the graphic EQ
+// processor separately reusable while giving profile transitions one stateful
+// object to crossfade.
+class profile_processor {
+public:
+    void configure(const eq_profile& profile, float sample_rate, std::size_t channels) noexcept;
+    void reset() noexcept;
+    void process_interleaved(float* samples, std::size_t frame_count) noexcept;
+    void process_interleaved(const float* input, float* output, std::size_t frame_count) noexcept;
+    [[nodiscard]] std::uint64_t take_limiter_clamp_count() noexcept;
+
+private:
+    static constexpr std::size_t max_channels = 8;
+    std::array<biquad_filter, max_channels> bass_filters_{};
+    std::array<biquad_filter, max_channels> loudness_low_filters_{};
+    std::array<biquad_filter, max_channels> loudness_high_filters_{};
+    std::array<biquad_filter, max_channels> clarity_filters_{};
+    eq_processor graphic_processor_{};
+    eq_profile profile_{};
+    std::size_t channels_{2};
+    float left_balance_{1.0F};
+    float right_balance_{1.0F};
 };
 
 }  // namespace termite

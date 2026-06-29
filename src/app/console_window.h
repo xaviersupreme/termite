@@ -42,6 +42,9 @@ private:
     void draw_left_bay();
     void draw_graph();
     void draw_faders();
+    void draw_effects_rack();
+    void draw_apps_page();
+    void draw_monitor_page();
     void draw_bottom_controls();
     void draw_preset_dropdown();
     void draw_fader_filter_menu();
@@ -63,6 +66,7 @@ private:
     void show_routing_picker();
     void refresh_routing_picker();
     void route_selected_apps();
+    void return_selected_apps();
     void restore_automatic_routes();
     void append_audio_status();
     void show_diagnostics();

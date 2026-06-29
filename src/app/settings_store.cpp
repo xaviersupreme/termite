@@ -276,6 +276,23 @@ void write_string(std::ostringstream& output, std::string_view value) {
         band.q = std::clamp(static_cast<float>(number), 0.15F, 12.0F);
         band.frequency_hz = graphic_band_frequencies[index];
     }
+    // v1 profiles intentionally did not have effects.  Flat effects are the
+    // compatibility default, while v2 requires a complete effects object.
+    if (const auto* effects = member(value, "effects"); effects != nullptr) {
+        if (effects->kind != json_kind::object ||
+            !read_boolean(member(*effects, "bass_enabled"), profile.effects.bass_enabled) ||
+            !read_number(member(*effects, "bass_db"), number) ||
+            !read_boolean(member(*effects, "loudness_enabled"), profile.effects.loudness_enabled)) return false;
+        profile.effects.bass_db = std::clamp(static_cast<float>(number), -12.0F, 12.0F);
+        if (!read_number(member(*effects, "loudness_amount"), number)) return false;
+        profile.effects.loudness_amount = std::clamp(static_cast<float>(number), 0.0F, 1.0F);
+        if (!read_boolean(member(*effects, "clarity_enabled"), profile.effects.clarity_enabled) || !read_number(member(*effects, "clarity_db"), number)) return false;
+        profile.effects.clarity_db = std::clamp(static_cast<float>(number), -8.0F, 8.0F);
+        if (!read_boolean(member(*effects, "stereo_enabled"), profile.effects.stereo_enabled) || !read_number(member(*effects, "stereo_width"), number)) return false;
+        profile.effects.stereo_width = std::clamp(static_cast<float>(number), 0.5F, 1.5F);
+        if (!read_boolean(member(*effects, "mono"), profile.effects.mono) || !read_number(member(*effects, "balance"), number)) return false;
+        profile.effects.balance = std::clamp(static_cast<float>(number), -1.0F, 1.0F);
+    }
     result = profile;
     return true;
 }
@@ -284,6 +301,12 @@ void encode_profile_object(std::ostringstream& output, const eq_profile& profile
     output << indent << "\"enabled\": " << (profile.enabled ? "true" : "false")
            << ",\n" << indent << "\"preamp_db\": " << profile.preamp_db
            << ",\n" << indent << "\"limiter_ceiling_db\": " << profile.limiter_ceiling_db
+           << ",\n" << indent << "\"effects\": {\"bass_enabled\": " << (profile.effects.bass_enabled ? "true" : "false")
+           << ", \"bass_db\": " << profile.effects.bass_db << ", \"loudness_enabled\": " << (profile.effects.loudness_enabled ? "true" : "false")
+           << ", \"loudness_amount\": " << profile.effects.loudness_amount << ", \"clarity_enabled\": " << (profile.effects.clarity_enabled ? "true" : "false")
+           << ", \"clarity_db\": " << profile.effects.clarity_db << ", \"stereo_enabled\": " << (profile.effects.stereo_enabled ? "true" : "false")
+           << ", \"stereo_width\": " << profile.effects.stereo_width << ", \"mono\": " << (profile.effects.mono ? "true" : "false")
+           << ", \"balance\": " << profile.effects.balance << "}"
            << ",\n" << indent << "\"bands\": [\n";
     for (std::size_t index = 0; index < graphic_band_count; ++index) {
         const auto& band = profile.bands[index];
@@ -296,23 +319,22 @@ void encode_profile_object(std::ostringstream& output, const eq_profile& profile
 
 [[nodiscard]] bool decode_settings(const json_value& root, termite_settings& result) {
     int version{};
-    if (!read_int(member(root, "version"), version) || version != 1) return false;
+    if (!read_int(member(root, "version"), version) || (version != 1 && version != 2)) return false;
     console_persistent_state state;
     const auto* profile = member(root, "profile");
     if (profile == nullptr || !decode_profile_object(*profile, state.profile)) return false;
 
     const auto* ui = member(root, "ui");
     int background{};
-    if (ui == nullptr || ui->kind != json_kind::object || !read_int(member(*ui, "smoothing"), state.smoothing_amount) ||
-        !read_int(member(*ui, "wet_mix"), state.wet_mix) || !read_int(member(*ui, "preset"), state.preset_index) ||
+    if (ui == nullptr || ui->kind != json_kind::object || !read_int(member(*ui, "preset"), state.preset_index) ||
         !read_boolean(member(*ui, "paused"), state.paused) || !read_boolean(member(*ui, "sleeping"), state.sleeping) ||
         !read_boolean(member(*ui, "default_start"), state.default_start_saved) || !read_boolean(member(*ui, "grid"), state.grid_visible) ||
         !read_int(member(*ui, "background"), background)) return false;
-    state.smoothing_amount = std::clamp(state.smoothing_amount, 0, 100);
-    state.wet_mix = std::clamp(state.wet_mix, 0, 100);
-    state.dry_mix = 100 - state.wet_mix;
+    int active_tab{};
+    if (version >= 2 && !read_int(member(*ui, "active_tab"), active_tab)) return false;
     state.preset_index = std::clamp(state.preset_index, -1, static_cast<int>(console_state::preset_count()) - 1);
     state.background_index = static_cast<std::size_t>(std::max(0, background)) % 6U;
+    state.active_tab = active_tab >= 0 && active_tab < static_cast<int>(console_tab_count) ? static_cast<console_tab>(active_tab) : console_tab::graphic_eq;
 
     const auto* window = member(root, "window");
     if (window == nullptr || window->kind != json_kind::object || !read_int(member(*window, "x"), result.window.x) ||
@@ -335,19 +357,12 @@ void encode_profile_object(std::ostringstream& output, const eq_profile& profile
     const auto& state = settings.console;
     std::ostringstream output;
     output.precision(9);
-    output << "{\n  \"version\": 1,\n  \"profile\": {\n    \"enabled\": " << (state.profile.enabled ? "true" : "false")
-           << ",\n    \"preamp_db\": " << state.profile.preamp_db
-           << ",\n    \"limiter_ceiling_db\": " << state.profile.limiter_ceiling_db << ",\n    \"bands\": [\n";
-    for (std::size_t index = 0; index < graphic_band_count; ++index) {
-        const auto& band = state.profile.bands[index];
-        output << "      {\"shape\": " << static_cast<int>(band.shape) << ", \"gain_db\": " << band.gain_db
-               << ", \"q\": " << band.q << ", \"enabled\": " << (band.enabled ? "true" : "false") << "}";
-        output << (index + 1 == graphic_band_count ? "\n" : ",\n");
-    }
-    output << "    ]\n  },\n  \"ui\": {\"smoothing\": " << state.smoothing_amount << ", \"wet_mix\": " << state.wet_mix
-           << ", \"preset\": " << state.preset_index << ", \"paused\": " << (state.paused ? "true" : "false")
+    output << "{\n  \"version\": 2,\n  \"profile\": {\n";
+    encode_profile_object(output, state.profile, "    ");
+    output << "\n  },\n  \"ui\": {\"preset\": " << state.preset_index << ", \"paused\": " << (state.paused ? "true" : "false")
            << ", \"sleeping\": " << (state.sleeping ? "true" : "false") << ", \"default_start\": " << (state.default_start_saved ? "true" : "false")
-           << ", \"grid\": " << (state.grid_visible ? "true" : "false") << ", \"background\": " << state.background_index << "},\n"
+           << ", \"grid\": " << (state.grid_visible ? "true" : "false") << ", \"background\": " << state.background_index
+           << ", \"active_tab\": " << static_cast<std::size_t>(state.active_tab) << "},\n"
            << "  \"window\": {\"x\": " << settings.window.x << ", \"y\": " << settings.window.y << ", \"width\": " << settings.window.width
            << ", \"height\": " << settings.window.height << ", \"valid\": " << (settings.window.valid ? "true" : "false") << "},\n  \"routing\": [";
     for (std::size_t index = 0; index < settings.routing_executables.size(); ++index) {
@@ -363,13 +378,13 @@ void encode_profile_object(std::ostringstream& output, const eq_profile& profile
     const auto* format = member(root, "format");
     const auto* profile = member(root, "profile");
     return format != nullptr && format->kind == json_kind::string && format->string == "termite-eq-profile" &&
-           read_int(member(root, "version"), version) && version == 1 && profile != nullptr && decode_profile_object(*profile, result);
+           read_int(member(root, "version"), version) && (version == 1 || version == 2) && profile != nullptr && decode_profile_object(*profile, result);
 }
 
 [[nodiscard]] std::string encode_profile_file(const eq_profile& profile) {
     std::ostringstream output;
     output.precision(9);
-    output << "{\n  \"format\": \"termite-eq-profile\",\n  \"version\": 1,\n  \"profile\": {\n";
+    output << "{\n  \"format\": \"termite-eq-profile\",\n  \"version\": 2,\n  \"profile\": {\n";
     encode_profile_object(output, profile, "    ");
     output << "\n  }\n}\n";
     return output.str();

@@ -341,7 +341,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         case WM_TIMER:
             if (wparam == status_timer_id) {
                 append_audio_status();
-                if (diagnostics_popup_open_) InvalidateRect(window_, nullptr, FALSE);
+                if (diagnostics_popup_open_ || state_.active_tab() == console_tab::monitor) InvalidateRect(window_, nullptr, FALSE);
             } else if (wparam == settings_save_timer_id) {
                 KillTimer(window_, settings_save_timer_id);
                 save_settings();
@@ -442,7 +442,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 InvalidateRect(window_, nullptr, FALSE);
                 return 0;
             }
-            const auto hit = console_layout::hit_test(design, state_.notices().size(), state_.scroll_offset());
+            const auto hit = console_layout::hit_test(design, state_.notices().size(), state_.scroll_offset(), state_.active_tab());
             if (editing_fader_ >= 0 && (hit.control != console_control::fader_value || hit.index != editing_fader_)) {
                 finish_fader_edit(true);
             }
@@ -543,7 +543,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 InvalidateRect(window_, nullptr, FALSE);
                 return 0;
             }
-            const auto released = console_layout::hit_test(to_design(point), state_.notices().size(), state_.scroll_offset());
+            const auto released = console_layout::hit_test(to_design(point), state_.notices().size(), state_.scroll_offset(), state_.active_tab());
             if (GetCapture() == window_) {
                 ReleaseCapture();
             }
@@ -569,7 +569,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
                 InvalidateRect(window_, nullptr, FALSE);
                 return 0;
             }
-            const auto hit = console_layout::hit_test(design, state_.notices().size(), state_.scroll_offset());
+            const auto hit = console_layout::hit_test(design, state_.notices().size(), state_.scroll_offset(), state_.active_tab());
             const int wheel_steps = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
             if (hit.control == console_control::fader_track && hit.index >= 0) {
                 if (state_.adjust_fader_q(static_cast<std::size_t>(hit.index), static_cast<float>(wheel_steps) * 0.10F)) {
@@ -584,7 +584,7 @@ LRESULT console_window::handle_message(UINT message, WPARAM wparam, LPARAM lpara
         case WM_RBUTTONUP: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             if (routing_picker_open_) return 0;
-            const auto hit = console_layout::hit_test(to_design(point), state_.notices().size(), state_.scroll_offset());
+            const auto hit = console_layout::hit_test(to_design(point), state_.notices().size(), state_.scroll_offset(), state_.active_tab());
             if ((hit.control == console_control::fader_up || hit.control == console_control::fader_track || hit.control == console_control::fader_down) && hit.index >= 0) {
                 show_fader_filter_menu(hit.index, to_design(point));
                 return 0;
@@ -686,7 +686,7 @@ LRESULT console_window::hit_test_screen(POINT screen_point) const {
     if (top) return HTTOP;
     if (bottom) return HTBOTTOM;
 
-    const auto hit = console_layout::hit_test(to_design(client), state_.notices().size(), state_.scroll_offset());
+    const auto hit = console_layout::hit_test(to_design(client), state_.notices().size(), state_.scroll_offset(), state_.active_tab());
     return hit.control == console_control::title_drag ? HTCAPTION : HTCLIENT;
 }
 
@@ -737,12 +737,18 @@ void console_window::draw_console() {
     skin_->draw_background({0.0F, 0.0F, console_design_width, console_design_height}, state_.background_index());
     draw_title_and_menu();
     draw_left_bay();
-    draw_graph();
-    draw_faders();
+    switch (state_.active_tab()) {
+        case console_tab::graphic_eq:
+            draw_graph();
+            draw_faders();
+            break;
+        case console_tab::effects_rack: draw_effects_rack(); break;
+        case console_tab::apps: draw_apps_page(); break;
+        case console_tab::monitor: draw_monitor_page(); break;
+    }
     draw_bottom_controls();
     draw_preset_dropdown();
-    draw_fader_filter_menu();
-    draw_routing_picker();
+    if (state_.active_tab() == console_tab::graphic_eq) draw_fader_filter_menu();
     draw_diagnostics_popup();
 }
 
@@ -754,7 +760,12 @@ void console_window::draw_title_and_menu() {
 
     skin_->draw_caption_button(console_layout::minimize_button(), L"-", visual_state_for({console_control::minimize}, hot_hit_, pressed_hit_));
     skin_->draw_caption_button(console_layout::close_button(), L"X", visual_state_for({console_control::close}, hot_hit_, pressed_hit_));
-
+    constexpr std::array labels{L"Graphic EQ", L"Effects Rack", L"Apps", L"Monitor"};
+    constexpr std::array controls{console_control::tab_graphic_eq, console_control::tab_effects_rack, console_control::tab_apps, console_control::tab_monitor};
+    for (std::size_t index = 0; index < labels.size(); ++index) {
+        skin_->draw_tab(console_layout::tab_rect(static_cast<console_tab>(index)), labels[index], state_.active_tab() == static_cast<console_tab>(index),
+                        visual_state_for({controls[index]}, hot_hit_, pressed_hit_, state_.active_tab() == static_cast<console_tab>(index)));
+    }
 }
 
 void console_window::draw_left_bay() {
@@ -871,6 +882,123 @@ void console_window::draw_faders() {
             skin_->draw_display_number(gain_label(band.gain_db), value);
         }
     }
+}
+
+void console_window::draw_effects_rack() {
+    const auto& effects = state_.profile().effects;
+    const auto draw_card = [this](std::size_t index, std::wstring_view title, std::wstring_view detail) {
+        const auto card = console_layout::effects_card(index);
+        skin_->draw_group(card);
+        skin_->draw_text(title, {card.x + 10.0F, card.y - 8.0F, card.width - 20.0F, 16.0F}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+        skin_->draw_text(detail, {card.x + 10.0F, card.y + 13.0F, card.width - 20.0F, 17.0F}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER,
+                         DWRITE_PARAGRAPH_ALIGNMENT_CENTER, D2D1::ColorF(0.66F, 0.69F, 0.70F));
+    };
+    draw_card(0, L"Bass", L"Low shelf  ·  95 Hz");
+    draw_card(1, L"Loudness", L"Low + high contour");
+    draw_card(2, L"Clarity", L"High shelf  ·  4.5 kHz");
+    draw_card(3, L"Stereo", L"Mid / side only");
+    draw_card(4, L"Balance", L"Equal-power L / R");
+
+    const auto draw_value = [this](console_control down, console_control up, float value, std::wstring_view suffix) {
+        const auto left = console_layout::control_rect(down);
+        const auto right = console_layout::control_rect(up);
+        const console_rect display{left.right() + 4.0F, left.y, right.x - left.right() - 8.0F, left.height};
+        skin_->draw_button(left, L"-", visual_state_for({down}, hot_hit_, pressed_hit_));
+        skin_->draw_panel(display);
+        skin_->draw_text(std::format(L"{:.0f}{}", value, suffix), display, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+        skin_->draw_button(right, L"+", visual_state_for({up}, hot_hit_, pressed_hit_));
+    };
+    skin_->draw_button(console_layout::control_rect(console_control::effect_bass_toggle), effects.bass_enabled ? L"Enabled" : L"Bypassed",
+                       visual_state_for({console_control::effect_bass_toggle}, hot_hit_, pressed_hit_, effects.bass_enabled));
+    draw_value(console_control::effect_bass_down, console_control::effect_bass_up, effects.bass_db, L" dB");
+    skin_->draw_button(console_layout::control_rect(console_control::effect_loudness_toggle), effects.loudness_enabled ? L"Enabled" : L"Bypassed",
+                       visual_state_for({console_control::effect_loudness_toggle}, hot_hit_, pressed_hit_, effects.loudness_enabled));
+    draw_value(console_control::effect_loudness_down, console_control::effect_loudness_up, effects.loudness_amount * 100.0F, L"%");
+    skin_->draw_button(console_layout::control_rect(console_control::effect_clarity_toggle), effects.clarity_enabled ? L"Enabled" : L"Bypassed",
+                       visual_state_for({console_control::effect_clarity_toggle}, hot_hit_, pressed_hit_, effects.clarity_enabled));
+    draw_value(console_control::effect_clarity_down, console_control::effect_clarity_up, effects.clarity_db, L" dB");
+    skin_->draw_button(console_layout::control_rect(console_control::effect_stereo_toggle), effects.stereo_enabled ? L"Enabled" : L"Bypassed",
+                       visual_state_for({console_control::effect_stereo_toggle}, hot_hit_, pressed_hit_, effects.stereo_enabled));
+    draw_value(console_control::effect_width_down, console_control::effect_width_up, effects.stereo_width * 100.0F, L"%");
+    skin_->draw_checkbox(console_layout::control_rect(console_control::effect_mono), effects.mono, L"Mono");
+    skin_->draw_button(console_layout::control_rect(console_control::effect_balance_left), L"L", visual_state_for({console_control::effect_balance_left}, hot_hit_, pressed_hit_));
+    skin_->draw_panel({console_layout::effects_card(4).x + 88.0F, console_layout::effects_card(4).y + 48.0F, 84.0F, 28.0F});
+    skin_->draw_text(std::format(L"{:+.0f}", effects.balance * 100.0F), {console_layout::effects_card(4).x + 88.0F, console_layout::effects_card(4).y + 48.0F, 84.0F, 28.0F},
+                     console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+    skin_->draw_button(console_layout::control_rect(console_control::effect_balance_right), L"R", visual_state_for({console_control::effect_balance_right}, hot_hit_, pressed_hit_));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_reset), L"Reset effects", visual_state_for({console_control::effect_reset}, hot_hit_, pressed_hit_));
+    skin_->draw_text(L"Effects are shared across the CABLE Input mix. The master bypass remains dry.",
+                     {console_layout::page_rect().x + 40.0F, console_layout::page_rect().y + 285.0F, console_layout::page_rect().width - 80.0F, 20.0F},
+                     console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, D2D1::ColorF(0.72F, 0.74F, 0.75F));
+}
+
+void console_window::draw_apps_page() {
+    const auto frame = console_layout::apps_list_frame();
+    skin_->draw_group(frame);
+    skin_->draw_text(L"Open foreground apps", {frame.x + 8.0F, frame.y - 8.0F, frame.width - 16.0F, 16.0F}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+    skin_->draw_text(L"APP                                      WINDOWS     AUDIO     ROUTE", {frame.x + 14.0F, frame.y + 8.0F, frame.width - 28.0F, 17.0F},
+                     console_text_style::label, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, D2D1::ColorF(0.66F, 0.69F, 0.70F));
+    if (routing_candidates_.empty()) {
+        skin_->draw_panel({frame.x + 8.0F, frame.y + 37.0F, frame.width - 16.0F, 36.0F});
+        skin_->draw_text(L"No eligible foreground apps. Press Refresh after opening an app window.", {frame.x + 12.0F, frame.y + 38.0F, frame.width - 24.0F, 34.0F},
+                         console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+    const auto count = std::min<std::size_t>(routing_candidates_.size(), 9);
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto row = console_layout::apps_row(index);
+        const auto& candidate = routing_candidates_[index];
+        const bool selected = index < routing_selected_.size() && routing_selected_[index];
+        skin_->draw_panel(row, hot_hit_.control == console_control::apps_row && hot_hit_.index == static_cast<int>(index));
+        const auto route = candidate.routed_to_cable ? L"Routed" : candidate.active_session_count == 0 ? L"Awaiting audio" : L"Not routed";
+        skin_->draw_checkbox({row.x + 3.0F, row.y, row.width * 0.48F, row.height}, selected, candidate.display_name);
+        skin_->draw_text(std::format(L"{}", candidate.open_window_count), {row.x + row.width * 0.58F, row.y, 48.0F, row.height}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+        skin_->draw_text(std::format(L"{}", candidate.active_session_count), {row.x + row.width * 0.69F, row.y, 48.0F, row.height}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+        skin_->draw_text(route, {row.x + row.width * 0.78F, row.y, row.width * 0.20F, row.height}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+    skin_->draw_button(console_layout::control_rect(console_control::apps_refresh), L"Refresh", visual_state_for({console_control::apps_refresh}, hot_hit_, pressed_hit_));
+    skin_->draw_button(console_layout::control_rect(console_control::apps_route_selected), L"Route selected", visual_state_for({console_control::apps_route_selected}, hot_hit_, pressed_hit_));
+    skin_->draw_button(console_layout::control_rect(console_control::apps_return_selected), L"Return selected", visual_state_for({console_control::apps_return_selected}, hot_hit_, pressed_hit_));
+    skin_->draw_button(console_layout::control_rect(console_control::apps_open_mixer), L"Volume Mixer", visual_state_for({console_control::apps_open_mixer}, hot_hit_, pressed_hit_));
+    skin_->draw_text(L"Routing is a Windows endpoint preference. Termite processes the shared CABLE Input mix once.",
+                     {frame.x + 10.0F, frame.bottom() + 53.0F, frame.width - 20.0F, 18.0F}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER,
+                     DWRITE_PARAGRAPH_ALIGNMENT_CENTER, D2D1::ColorF(0.72F, 0.74F, 0.75F));
+}
+
+void console_window::draw_monitor_page() {
+    const auto snapshot = audio_engine_.monitor();
+    const auto draw_spectrum = [this, &snapshot](bool output) {
+        const auto frame = console_layout::monitor_spectrum_frame(output);
+        skin_->draw_group(frame);
+        skin_->draw_text(output ? L"Post EQ spectrum" : L"CABLE input spectrum", {frame.x + 8.0F, frame.y - 8.0F, frame.width - 16.0F, 16.0F}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+        const auto plot = console_rect{frame.x + 8.0F, frame.y + 20.0F, frame.width - 16.0F, frame.height - 30.0F};
+        const auto grid = skin_->brush(D2D1::ColorF(0.36F, 0.40F, 0.42F, 0.55F));
+        for (int db = -96; db <= 0; db += 24) {
+            const auto y = plot.bottom() - (static_cast<float>(db + 96) / 96.0F) * plot.height;
+            render_target_->DrawLine(D2D1::Point2F(plot.x, y), D2D1::Point2F(plot.right(), y), grid, 0.6F);
+        }
+        const auto& spectrum = output ? snapshot.output_spectrum_db : snapshot.input_spectrum_db;
+        const auto paint = skin_->brush(output ? D2D1::ColorF(0.12F, 0.83F, 0.24F) : D2D1::ColorF(0.18F, 0.52F, 0.92F));
+        for (std::size_t band = 0; band < audio_monitor_band_count; ++band) {
+            const float x = plot.x + static_cast<float>(band) / static_cast<float>(audio_monitor_band_count) * plot.width;
+            const float width = std::max(1.0F, plot.width / static_cast<float>(audio_monitor_band_count) - 1.0F);
+            const float y = plot.bottom() - std::clamp((spectrum[band] + 96.0F) / 96.0F, 0.0F, 1.0F) * plot.height;
+            render_target_->FillRectangle(D2D1::RectF(x, y, x + width, plot.bottom()), paint);
+        }
+    };
+    draw_spectrum(false);
+    draw_spectrum(true);
+    const auto meter = console_layout::monitor_meter_frame();
+    skin_->draw_group(meter);
+    skin_->draw_text(L"Transport and meters", {meter.x + 10.0F, meter.y - 8.0F, meter.width - 20.0F, 16.0F}, console_text_style::label, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const auto diagnostics = audio_engine_.diagnostics();
+    const std::array<std::wstring, 5> rows{
+        std::format(L"Input  peak L/R {:.2f} / {:.2f}    RMS {:.2f} / {:.2f}", snapshot.input_peak_left, snapshot.input_peak_right, snapshot.input_rms_left, snapshot.input_rms_right),
+        std::format(L"Output peak L/R {:.2f} / {:.2f}    RMS {:.2f} / {:.2f}    limiter clamps {}", snapshot.output_peak_left, snapshot.output_peak_right, snapshot.output_rms_left, snapshot.output_rms_right, snapshot.limiter_clamp_count),
+        std::format(L"Ring {} / {} frames    xruns capture {} render {}", diagnostics.ring_fill_frames, diagnostics.target_fill_frames, diagnostics.capture_overflows, diagnostics.render_underflows),
+        std::format(L"Capture {} Hz / {} ch    Render {} Hz / {} ch", diagnostics.capture_sample_rate, diagnostics.capture_channels, diagnostics.render_sample_rate, diagnostics.render_channels),
+        L"State: " + widen(audio_engine_.status_text()) + L"    Recovery: " + widen(diagnostics.recovery_reason.empty() ? "None" : diagnostics.recovery_reason),
+    };
+    for (std::size_t row = 0; row < rows.size(); ++row) skin_->draw_text(rows[row], {meter.x + 12.0F, meter.y + 15.0F + static_cast<float>(row) * 23.0F, meter.width - 24.0F, 19.0F}, console_text_style::label);
 }
 
 void console_window::draw_bottom_controls() {
@@ -1052,7 +1180,7 @@ void console_window::update_pointer(POINT client_point) {
         }
         return;
     }
-    const auto next_hit = console_layout::hit_test(design, state_.notices().size(), state_.scroll_offset());
+    const auto next_hit = console_layout::hit_test(design, state_.notices().size(), state_.scroll_offset(), state_.active_tab());
     const bool hot_changed = next_hit != hot_hit_;
     hot_hit_ = next_hit;
     if (!tracking_mouse_) {
@@ -1085,8 +1213,36 @@ void console_window::execute_control(console_hit hit) {
         save_profile_file();
         return;
     }
+    if (hit.control == console_control::apps_refresh) {
+        refresh_routing_picker();
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+    if (hit.control == console_control::apps_route_selected) {
+        route_selected_apps();
+        schedule_settings_save();
+        return;
+    }
+    if (hit.control == console_control::apps_return_selected) {
+        return_selected_apps();
+        schedule_settings_save();
+        return;
+    }
+    if (hit.control == console_control::apps_open_mixer) {
+        session_router::open_manual_routing_settings();
+        return;
+    }
+    if (hit.control == console_control::apps_row && hit.index >= 0 && static_cast<std::size_t>(hit.index) < routing_selected_.size()) {
+        const auto index = static_cast<std::size_t>(hit.index);
+        routing_selected_[index] = !routing_selected_[index];
+        set_routing_reminder(routing_candidates_[index].executable_path, routing_selected_[index]);
+        schedule_settings_save();
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
 
     const auto result = state_.activate(hit.control);
+    if (hit.control == console_control::tab_apps) refresh_routing_picker();
     if (result.profile_changed) {
         sync_profile();
     }
@@ -1332,7 +1488,8 @@ void console_window::save_profile_file() {
 void console_window::show_routing_picker() {
     filter_menu_band_ = -1;
     preset_dropdown_open_ = false;
-    routing_picker_open_ = true;
+    routing_picker_open_ = false;
+    state_.set_active_tab(console_tab::apps);
     routing_picker_pressed_row_ = -1;
     routing_picker_hot_row_ = -1;
     refresh_routing_picker();
@@ -1380,6 +1537,35 @@ void console_window::route_selected_apps() {
     if (routed > 0) {
         state_.append_engine_status("CABLE Input mixes the routed apps. Restart playback if an app already had an active stream.");
     }
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void console_window::return_selected_apps() {
+    std::size_t returned{};
+    for (std::size_t index = 0; index < routing_candidates_.size() && index < routing_selected_.size(); ++index) {
+        if (!routing_selected_[index]) continue;
+        const auto& candidate = routing_candidates_[index];
+        const auto route = std::find_if(automatic_routes_.begin(), automatic_routes_.end(), [&candidate](const app_audio_route_snapshot& existing) {
+            return _wcsicmp(existing.executable_path.c_str(), candidate.executable_path.c_str()) == 0;
+        });
+        if (route == automatic_routes_.end()) {
+            routing_selected_[index] = false;
+            set_routing_reminder(candidate.executable_path, false);
+            continue;
+        }
+        std::wstring diagnostic;
+        if (session_router_.restore_route(*route, diagnostic)) {
+            automatic_routes_.erase(route);
+            routing_selected_[index] = false;
+            set_routing_reminder(candidate.executable_path, false);
+            state_.append_engine_status(std::format("{}: {}", narrow(candidate.display_name), narrow(diagnostic)));
+            ++returned;
+        } else {
+            state_.append_engine_status(std::format("Could not return {}: {}", narrow(candidate.display_name), narrow(diagnostic)));
+        }
+    }
+    refresh_routing_picker();
+    state_.append_engine_status(returned == 0 ? "No selected app had a Termite route to return." : "Selected app routes returned to their previous Windows output.");
     InvalidateRect(window_, nullptr, FALSE);
 }
 

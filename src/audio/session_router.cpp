@@ -5,10 +5,13 @@
 #include <Windows.h>
 #include <Audioclient.h>
 #include <Audiopolicy.h>
+#include <propkey.h>
+#include <functiondiscoverykeys_devpkey.h>
 #include <Mmdeviceapi.h>
 #include <shellapi.h>
 
 #include <algorithm>
+#include <cwctype>
 #include <map>
 #include <memory>
 #include <set>
@@ -34,6 +37,20 @@ std::wstring process_path(DWORD process_id) {
     const auto succeeded = QueryFullProcessImageNameW(process, 0, path.data(), &length);
     CloseHandle(process);
     return succeeded ? path.substr(0, length) : L"";
+}
+
+bool endpoint_is_cable_input(IMMDevice* device) {
+    IPropertyStore* raw_store{};
+    if (device == nullptr || FAILED(device->OpenPropertyStore(STGM_READ, &raw_store))) return false;
+    const auto store = adopt_com(raw_store);
+    PROPVARIANT value{};
+    PropVariantInit(&value);
+    const auto result = store->GetValue(PKEY_Device_FriendlyName, &value);
+    const std::wstring name = result == S_OK && value.vt == VT_LPWSTR && value.pwszVal != nullptr ? value.pwszVal : L"";
+    PropVariantClear(&value);
+    std::wstring lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t value) { return static_cast<wchar_t>(std::towlower(value)); });
+    return lower.find(L"cable input") != std::wstring::npos;
 }
 
 struct open_app_enumerator {
@@ -82,21 +99,26 @@ std::vector<audio_session_info> session_router::active_sessions() const {
         return sessions;
     }
     const auto enumerator = adopt_com(raw_enumerator);
-    IMMDevice* raw_device = nullptr;
-    if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &raw_device))) return sessions;
-    const auto device = adopt_com(raw_device);
-    IAudioSessionManager2* raw_manager = nullptr;
-    if (FAILED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(&raw_manager)))) {
-        return sessions;
-    }
-    const auto manager = adopt_com(raw_manager);
-    IAudioSessionEnumerator* raw_sessions = nullptr;
-    if (FAILED(manager->GetSessionEnumerator(&raw_sessions))) return sessions;
-    const auto session_list = adopt_com(raw_sessions);
-    int count{};
-    session_list->GetCount(&count);
-    std::set<DWORD> seen_processes;
-    for (int index = 0; index < count; ++index) {
+    IMMDeviceCollection* raw_devices{};
+    if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &raw_devices))) return sessions;
+    const auto devices = adopt_com(raw_devices);
+    UINT device_count{};
+    devices->GetCount(&device_count);
+    std::map<std::wstring, audio_session_info> grouped;
+    for (UINT device_index = 0; device_index < device_count; ++device_index) {
+        IMMDevice* raw_device{};
+        if (FAILED(devices->Item(device_index, &raw_device))) continue;
+        const auto device = adopt_com(raw_device);
+        IAudioSessionManager2* raw_manager{};
+        if (FAILED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(&raw_manager)))) continue;
+        const auto manager = adopt_com(raw_manager);
+        IAudioSessionEnumerator* raw_sessions{};
+        if (FAILED(manager->GetSessionEnumerator(&raw_sessions))) continue;
+        const auto session_list = adopt_com(raw_sessions);
+        int count{};
+        session_list->GetCount(&count);
+        const auto cable = endpoint_is_cable_input(device.get());
+        for (int index = 0; index < count; ++index) {
         IAudioSessionControl* raw_control = nullptr;
         if (FAILED(session_list->GetSession(index, &raw_control))) continue;
         const auto control = adopt_com(raw_control);
@@ -104,15 +126,20 @@ std::vector<audio_session_info> session_router::active_sessions() const {
         if (FAILED(control->QueryInterface(IID_PPV_ARGS(&raw_control2)))) continue;
         const auto control2 = adopt_com(raw_control2);
         DWORD process_id{};
-        if (FAILED(control2->GetProcessId(&process_id)) || process_id == 0 || !seen_processes.insert(process_id).second) continue;
+        if (FAILED(control2->GetProcessId(&process_id)) || process_id == 0) continue;
         LPWSTR raw_name = nullptr;
         control->GetDisplayName(&raw_name);
         std::wstring display_name = raw_name != nullptr ? raw_name : L"";
         CoTaskMemFree(raw_name);
         const auto executable = process_path(process_id);
         if (display_name.empty()) display_name = executable;
-        sessions.push_back({process_id, executable, display_name, false});
+        const auto key = normalized_executable_key(executable);
+        auto [item, inserted] = grouped.try_emplace(key);
+        if (inserted) item->second = {process_id, executable, display_name, cable};
+        else item->second.routed_to_cable = item->second.routed_to_cable || cable;
+        }
     }
+    for (auto& [_, session] : grouped) sessions.push_back(std::move(session));
     return sessions;
 }
 
@@ -122,6 +149,13 @@ std::vector<routing_candidate> session_router::open_apps() const {
     ProcessIdToSessionId(GetCurrentProcessId(), &current_session);
     open_app_enumerator enumeration{current_session, GetCurrentProcessId()};
     EnumWindows(&collect_open_app, reinterpret_cast<LPARAM>(&enumeration));
+    const auto sessions = active_sessions();
+    for (const auto& session : sessions) {
+        const auto found = enumeration.grouped.find(normalized_executable_key(session.executable_path));
+        if (found == enumeration.grouped.end()) continue;
+        ++found->second.active_session_count;
+        found->second.routed_to_cable = found->second.routed_to_cable || session.routed_to_cable;
+    }
     apps.reserve(enumeration.grouped.size());
     for (auto& [_, candidate] : enumeration.grouped) apps.push_back(std::move(candidate));
     std::sort(apps.begin(), apps.end(), [](const routing_candidate& left, const routing_candidate& right) {

@@ -176,6 +176,7 @@ struct stream_session {
     streaming_resampler resampler;
     drift_controller drift;
     channel_mapper mapper;
+    audio_monitor_analyzer monitor;
     std::vector<float> capture_scratch;
     std::vector<float> active_dsp_scratch;
     std::vector<float> pending_dsp_scratch;
@@ -283,6 +284,7 @@ bool wasapi_audio_engine::start() {
     restart_count_ = 0;
     ring_fill_frames_ = 0;
     target_fill_frames_ = 0;
+    publish_monitor({});
     set_status(state_text(engine_state::starting), engine_state::starting);
     audio_thread_ = std::thread(&wasapi_audio_engine::audio_loop, this);
     return true;
@@ -325,7 +327,36 @@ audio_diagnostics wasapi_audio_engine::diagnostics() const {
     return result;
 }
 
+audio_monitor_snapshot wasapi_audio_engine::monitor() const noexcept {
+    audio_monitor_snapshot result;
+    std::uint64_t before{};
+    std::uint64_t after{};
+    do {
+        before = monitor_revision_.load(std::memory_order_acquire);
+        if ((before & 1U) != 0U) continue;
+        for (std::size_t index = 0; index < audio_monitor_band_count; ++index) {
+            result.input_spectrum_db[index] = std::bit_cast<float>(monitor_input_spectrum_bits_[index].load(std::memory_order_relaxed));
+            result.output_spectrum_db[index] = std::bit_cast<float>(monitor_output_spectrum_bits_[index].load(std::memory_order_relaxed));
+        }
+        result.input_peak_left = std::bit_cast<float>(monitor_input_peak_left_bits_.load(std::memory_order_relaxed));
+        result.input_peak_right = std::bit_cast<float>(monitor_input_peak_right_bits_.load(std::memory_order_relaxed));
+        result.input_rms_left = std::bit_cast<float>(monitor_input_rms_left_bits_.load(std::memory_order_relaxed));
+        result.input_rms_right = std::bit_cast<float>(monitor_input_rms_right_bits_.load(std::memory_order_relaxed));
+        result.output_peak_left = std::bit_cast<float>(monitor_output_peak_left_bits_.load(std::memory_order_relaxed));
+        result.output_peak_right = std::bit_cast<float>(monitor_output_peak_right_bits_.load(std::memory_order_relaxed));
+        result.output_rms_left = std::bit_cast<float>(monitor_output_rms_left_bits_.load(std::memory_order_relaxed));
+        result.output_rms_right = std::bit_cast<float>(monitor_output_rms_right_bits_.load(std::memory_order_relaxed));
+        result.limiter_clamp_count = monitor_limiter_clamps_.load(std::memory_order_relaxed);
+        result.stereo_input = monitor_stereo_input_.load(std::memory_order_relaxed);
+        after = monitor_revision_.load(std::memory_order_acquire);
+    } while (before != after || (after & 1U) != 0U);
+    return result;
+}
+
 void wasapi_audio_engine::publish_profile(const eq_profile& profile) noexcept {
+    // Odd/even sequence makes the scalar store a real lock-free snapshot,
+    // rather than accepting a partially written profile between two updates.
+    profile_revision_.fetch_add(1, std::memory_order_acq_rel);
     for (std::size_t index = 0; index < graphic_band_count; ++index) {
         band_gain_bits_[index].store(std::bit_cast<std::uint32_t>(profile.bands[index].gain_db), std::memory_order_relaxed);
         band_q_bits_[index].store(std::bit_cast<std::uint32_t>(profile.bands[index].q), std::memory_order_relaxed);
@@ -335,6 +366,16 @@ void wasapi_audio_engine::publish_profile(const eq_profile& profile) noexcept {
     preamp_bits_.store(std::bit_cast<std::uint32_t>(profile.preamp_db), std::memory_order_relaxed);
     limiter_bits_.store(std::bit_cast<std::uint32_t>(profile.limiter_ceiling_db), std::memory_order_relaxed);
     profile_enabled_.store(profile.enabled, std::memory_order_relaxed);
+    bass_enabled_.store(profile.effects.bass_enabled, std::memory_order_relaxed);
+    bass_bits_.store(std::bit_cast<std::uint32_t>(profile.effects.bass_db), std::memory_order_relaxed);
+    loudness_enabled_.store(profile.effects.loudness_enabled, std::memory_order_relaxed);
+    loudness_bits_.store(std::bit_cast<std::uint32_t>(profile.effects.loudness_amount), std::memory_order_relaxed);
+    clarity_enabled_.store(profile.effects.clarity_enabled, std::memory_order_relaxed);
+    clarity_bits_.store(std::bit_cast<std::uint32_t>(profile.effects.clarity_db), std::memory_order_relaxed);
+    stereo_enabled_.store(profile.effects.stereo_enabled, std::memory_order_relaxed);
+    stereo_width_bits_.store(std::bit_cast<std::uint32_t>(profile.effects.stereo_width), std::memory_order_relaxed);
+    mono_.store(profile.effects.mono, std::memory_order_relaxed);
+    balance_bits_.store(std::bit_cast<std::uint32_t>(profile.effects.balance), std::memory_order_relaxed);
     profile_revision_.fetch_add(1, std::memory_order_release);
 }
 
@@ -355,10 +396,39 @@ eq_profile wasapi_audio_engine::snapshot_profile(std::uint64_t& revision) const 
         profile.preamp_db = std::bit_cast<float>(preamp_bits_.load(std::memory_order_relaxed));
         profile.limiter_ceiling_db = std::bit_cast<float>(limiter_bits_.load(std::memory_order_relaxed));
         profile.enabled = profile_enabled_.load(std::memory_order_relaxed);
+        profile.effects.bass_enabled = bass_enabled_.load(std::memory_order_relaxed);
+        profile.effects.bass_db = std::bit_cast<float>(bass_bits_.load(std::memory_order_relaxed));
+        profile.effects.loudness_enabled = loudness_enabled_.load(std::memory_order_relaxed);
+        profile.effects.loudness_amount = std::bit_cast<float>(loudness_bits_.load(std::memory_order_relaxed));
+        profile.effects.clarity_enabled = clarity_enabled_.load(std::memory_order_relaxed);
+        profile.effects.clarity_db = std::bit_cast<float>(clarity_bits_.load(std::memory_order_relaxed));
+        profile.effects.stereo_enabled = stereo_enabled_.load(std::memory_order_relaxed);
+        profile.effects.stereo_width = std::bit_cast<float>(stereo_width_bits_.load(std::memory_order_relaxed));
+        profile.effects.mono = mono_.load(std::memory_order_relaxed);
+        profile.effects.balance = std::bit_cast<float>(balance_bits_.load(std::memory_order_relaxed));
         after = profile_revision_.load(std::memory_order_acquire);
-    } while (before != after);
+    } while (before != after || (after & 1U) != 0U);
     revision = after;
     return profile;
+}
+
+void wasapi_audio_engine::publish_monitor(const audio_monitor_snapshot& snapshot) noexcept {
+    monitor_revision_.fetch_add(1, std::memory_order_acq_rel);
+    for (std::size_t index = 0; index < audio_monitor_band_count; ++index) {
+        monitor_input_spectrum_bits_[index].store(std::bit_cast<std::uint32_t>(snapshot.input_spectrum_db[index]), std::memory_order_relaxed);
+        monitor_output_spectrum_bits_[index].store(std::bit_cast<std::uint32_t>(snapshot.output_spectrum_db[index]), std::memory_order_relaxed);
+    }
+    monitor_input_peak_left_bits_.store(std::bit_cast<std::uint32_t>(snapshot.input_peak_left), std::memory_order_relaxed);
+    monitor_input_peak_right_bits_.store(std::bit_cast<std::uint32_t>(snapshot.input_peak_right), std::memory_order_relaxed);
+    monitor_input_rms_left_bits_.store(std::bit_cast<std::uint32_t>(snapshot.input_rms_left), std::memory_order_relaxed);
+    monitor_input_rms_right_bits_.store(std::bit_cast<std::uint32_t>(snapshot.input_rms_right), std::memory_order_relaxed);
+    monitor_output_peak_left_bits_.store(std::bit_cast<std::uint32_t>(snapshot.output_peak_left), std::memory_order_relaxed);
+    monitor_output_peak_right_bits_.store(std::bit_cast<std::uint32_t>(snapshot.output_peak_right), std::memory_order_relaxed);
+    monitor_output_rms_left_bits_.store(std::bit_cast<std::uint32_t>(snapshot.output_rms_left), std::memory_order_relaxed);
+    monitor_output_rms_right_bits_.store(std::bit_cast<std::uint32_t>(snapshot.output_rms_right), std::memory_order_relaxed);
+    monitor_limiter_clamps_.store(snapshot.limiter_clamp_count, std::memory_order_relaxed);
+    monitor_stereo_input_.store(snapshot.stereo_input, std::memory_order_relaxed);
+    monitor_revision_.fetch_add(1, std::memory_order_release);
 }
 
 void wasapi_audio_engine::set_status(std::string value, engine_state state, std::string recovery_reason) {
@@ -536,6 +606,8 @@ bool wasapi_audio_engine::run_stream() {
     session.pending_dsp_scratch.assign(static_cast<std::size_t>(session.capture_buffer_frames) * session.capture_format.channels, 0.0F);
     session.resample_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * session.capture_format.channels, 0.0F);
     session.render_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * session.render_format.channels, 0.0F);
+    session.monitor.configure(session.capture_format.sample_rate, session.capture_format.channels);
+    publish_monitor({});
 
     result = session.capture_client->Start();
     if (SUCCEEDED(result)) result = session.render_client->Start();
@@ -571,8 +643,8 @@ void wasapi_audio_engine::capture_worker(stream_session& session) {
         return;
     }
     constexpr std::uint32_t profile_transition_ms = 10;
-    eq_processor active_processor;
-    eq_processor pending_processor;
+    profile_processor active_processor;
+    profile_processor pending_processor;
     std::uint64_t active_revision = std::numeric_limits<std::uint64_t>::max();
     std::uint64_t pending_revision{};
     std::size_t transition_frame{};
@@ -628,6 +700,10 @@ void wasapi_audio_engine::capture_worker(stream_session& session) {
                     active_revision = pending_revision;
                     transition_frames = 0;
                 }
+            }
+            const auto limiter_clamps = active_processor.take_limiter_clamp_count() + pending_processor.take_limiter_clamp_count();
+            if (session.monitor.process(session.capture_scratch.data(), session.active_dsp_scratch.data(), packet_frames, limiter_clamps)) {
+                publish_monitor(session.monitor.snapshot());
             }
             const auto pushed = session.ring.push(session.active_dsp_scratch.data(), packet_frames);
             if (pushed < packet_frames) capture_overflows_.fetch_add(packet_frames - pushed, std::memory_order_acq_rel);
