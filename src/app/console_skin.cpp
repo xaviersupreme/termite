@@ -299,6 +299,23 @@ void console_skin::draw_group(console_rect bounds) const {
 
 }
 
+void console_skin::draw_tab(console_rect bounds, std::wstring_view label, bool selected, console_visual_state state) const {
+    if (target_ == nullptr) return;
+    const auto frame = rect(bounds);
+    const auto rounded = D2D1::RoundedRect(frame, 4.0F, 4.0F);
+    const auto outer = selected ? D2D1::ColorF(0.17F, 0.19F, 0.21F) : D2D1::ColorF(0.055F, 0.060F, 0.065F);
+    target_->FillRoundedRectangle(rounded, brush(outer));
+    target_->DrawRoundedRectangle(rounded, brush(selected ? D2D1::ColorF(0.48F, 0.51F, 0.53F) : D2D1::ColorF(0.18F, 0.20F, 0.21F)));
+    target_->DrawLine(D2D1::Point2F(frame.left + 4.0F, frame.top + 1.0F), D2D1::Point2F(frame.right - 4.0F, frame.top + 1.0F),
+                      brush(D2D1::ColorF(0.60F, 0.62F, 0.63F, selected ? 0.42F : 0.18F)));
+    if (selected) {
+        target_->DrawLine(D2D1::Point2F(frame.left + 2.0F, frame.bottom - 1.0F), D2D1::Point2F(frame.right - 2.0F, frame.bottom - 1.0F),
+                          brush(D2D1::ColorF(0.10F, 0.46F, 0.74F, 0.9F)), 1.2F);
+    }
+    const auto color = state == console_visual_state::hot ? D2D1::ColorF(0.95F, 0.97F, 0.98F) : D2D1::ColorF(0.80F, 0.82F, 0.83F);
+    draw_text(label, bounds, console_text_style::menu, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, color);
+}
+
 void console_skin::draw_popup(console_rect bounds) const {
     if (target_ == nullptr || bounds.width <= 2.0F || bounds.height <= 2.0F) {
         return;

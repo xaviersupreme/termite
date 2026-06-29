@@ -18,6 +18,7 @@ struct routing_candidate {
     std::wstring executable_path;
     std::wstring display_name;
     std::size_t open_window_count{};
+    std::size_t active_session_count{};
     bool routed_to_cable{};
 };
 

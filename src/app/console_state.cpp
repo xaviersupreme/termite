@@ -8,11 +8,11 @@
 namespace termite {
 namespace {
 
-constexpr std::array<std::string_view, 10> preset_ids{
-    "bass", "deep_bass", "bass_cut", "loudness", "vocal", "clarity", "warm", "bright", "de_ess", "treble_cut",
+constexpr std::array<std::string_view, 12> preset_ids{
+    "bass", "deep_bass", "bass_cut", "loudness", "vocal", "clarity", "warm", "bright", "de_ess", "treble_cut", "late_night", "wide_music",
 };
-constexpr std::array<std::wstring_view, 10> preset_labels{
-    L"Bass boost", L"Deep bass", L"Bass cut", L"Loudness", L"Vocal", L"Clarity", L"Warm", L"Treble boost", L"De-ess", L"Treble cut",
+constexpr std::array<std::wstring_view, 12> preset_labels{
+    L"Bass boost", L"Deep bass", L"Bass cut", L"Loudness", L"Vocal", L"Clarity", L"Warm", L"Treble boost", L"De-ess", L"Treble cut", L"Late night", L"Wide music",
 };
 
 std::wstring widen(const std::string& value) {
@@ -30,9 +30,7 @@ console_state::console_state() {
 const eq_profile& console_state::profile() const noexcept { return profile_; }
 const std::vector<std::wstring>& console_state::notices() const noexcept { return notices_; }
 float console_state::scroll_offset() const noexcept { return scroll_offset_; }
-int console_state::smoothing_amount() const noexcept { return smoothing_amount_; }
-int console_state::dry_mix() const noexcept { return dry_mix_; }
-int console_state::wet_mix() const noexcept { return wet_mix_; }
+console_tab console_state::active_tab() const noexcept { return active_tab_; }
 bool console_state::grid_visible() const noexcept { return grid_visible_; }
 std::size_t console_state::background_index() const noexcept { return background_index_; }
 
@@ -61,12 +59,16 @@ std::wstring_view console_state::preset_name(std::size_t index) noexcept {
 int console_state::selected_preset_index() const noexcept { return preset_index_; }
 
 console_persistent_state console_state::persistent_state() const {
-    return {profile_, smoothing_amount_, dry_mix_, wet_mix_, preset_index_, paused_, sleeping_, default_start_saved_, grid_visible_, background_index_};
+    return {profile_, preset_index_, paused_, sleeping_, default_start_saved_, grid_visible_, background_index_, active_tab_};
 }
 
 console_action_result console_state::activate(console_control control) {
     console_action_result result;
     switch (control) {
+        case console_control::tab_graphic_eq: active_tab_ = console_tab::graphic_eq; break;
+        case console_control::tab_effects_rack: active_tab_ = console_tab::effects_rack; break;
+        case console_control::tab_apps: active_tab_ = console_tab::apps; break;
+        case console_control::tab_monitor: active_tab_ = console_tab::monitor; break;
         case console_control::minimize:
             result.minimize = true;
             break;
@@ -81,6 +83,7 @@ console_action_result console_state::activate(console_control control) {
             append_notice(L"Use Route apps to send an open app to CABLE Input while Termite is running.");
             break;
         case console_control::route_apps:
+            active_tab_ = console_tab::apps;
             append_notice(L"Choose open apps, then Termite will route their active audio to CABLE Input.");
             result.open_routing = true;
             break;
@@ -146,16 +149,6 @@ console_action_result console_state::activate(console_control control) {
             append_notice(L"Equalizer enabled.");
             result.profile_changed = true;
             break;
-        case console_control::blender_increase:
-            wet_mix_ = std::min(100, wet_mix_ + 5);
-            dry_mix_ = 100 - wet_mix_;
-            append_notice(L"Blender mix updated locally.");
-            break;
-        case console_control::blender_decrease:
-            wet_mix_ = std::max(0, wet_mix_ - 5);
-            dry_mix_ = 100 - wet_mix_;
-            append_notice(L"Blender mix updated locally.");
-            break;
         case console_control::volume_up:
             profile_.preamp_db = std::min(12.0F, profile_.preamp_db + 1.0F);
             append_notice(L"Digital volume increased.");
@@ -173,18 +166,6 @@ console_action_result console_state::activate(console_control control) {
             apply_next_preset();
             result.profile_changed = true;
             break;
-        case console_control::smoothing_reset:
-            smoothing_amount_ = 50;
-            append_notice(L"Smoothing reset to 50.");
-            break;
-        case console_control::smoothing_decrease:
-            smoothing_amount_ = std::max(0, smoothing_amount_ - 5);
-            append_notice(L"Smoothing adjusted.");
-            break;
-        case console_control::smoothing_increase:
-            smoothing_amount_ = std::min(100, smoothing_amount_ + 5);
-            append_notice(L"Smoothing adjusted.");
-            break;
         case console_control::export_response:
             append_notice(L"Response export is not part of v1.");
             break;
@@ -194,6 +175,70 @@ console_action_result console_state::activate(console_control control) {
             break;
         case console_control::help_button:
             append_notice(L"Use Route apps to send an open app to CABLE Input while Termite is running.");
+            break;
+        case console_control::effect_bass_toggle:
+            profile_.effects.bass_enabled = !profile_.effects.bass_enabled;
+            result.profile_changed = true;
+            break;
+        case console_control::effect_bass_down:
+            profile_.effects.bass_db = std::max(-12.0F, profile_.effects.bass_db - 1.0F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_bass_up:
+            profile_.effects.bass_db = std::min(12.0F, profile_.effects.bass_db + 1.0F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_loudness_toggle:
+            profile_.effects.loudness_enabled = !profile_.effects.loudness_enabled;
+            result.profile_changed = true;
+            break;
+        case console_control::effect_loudness_down:
+            profile_.effects.loudness_amount = std::max(0.0F, profile_.effects.loudness_amount - 0.05F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_loudness_up:
+            profile_.effects.loudness_amount = std::min(1.0F, profile_.effects.loudness_amount + 0.05F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_clarity_toggle:
+            profile_.effects.clarity_enabled = !profile_.effects.clarity_enabled;
+            result.profile_changed = true;
+            break;
+        case console_control::effect_clarity_down:
+            profile_.effects.clarity_db = std::max(-8.0F, profile_.effects.clarity_db - 1.0F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_clarity_up:
+            profile_.effects.clarity_db = std::min(8.0F, profile_.effects.clarity_db + 1.0F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_stereo_toggle:
+            profile_.effects.stereo_enabled = !profile_.effects.stereo_enabled;
+            result.profile_changed = true;
+            break;
+        case console_control::effect_width_down:
+            profile_.effects.stereo_width = std::max(0.5F, profile_.effects.stereo_width - 0.05F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_width_up:
+            profile_.effects.stereo_width = std::min(1.5F, profile_.effects.stereo_width + 0.05F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_mono:
+            profile_.effects.mono = !profile_.effects.mono;
+            result.profile_changed = true;
+            break;
+        case console_control::effect_balance_left:
+            profile_.effects.balance = std::max(-1.0F, profile_.effects.balance - 0.1F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_balance_right:
+            profile_.effects.balance = std::min(1.0F, profile_.effects.balance + 0.1F);
+            result.profile_changed = true;
+            break;
+        case console_control::effect_reset:
+            profile_.effects = {};
+            result.profile_changed = true;
             break;
         default:
             break;
@@ -254,6 +299,8 @@ void console_state::set_profile(eq_profile profile) {
     sleeping_ = false;
 }
 
+void console_state::set_active_tab(console_tab tab) noexcept { active_tab_ = tab; }
+
 void console_state::restore_persistent_state(const console_persistent_state& settings) {
     profile_ = settings.profile;
     for (std::size_t index = 0; index < graphic_band_count; ++index) {
@@ -265,9 +312,11 @@ void console_state::restore_persistent_state(const console_persistent_state& set
     }
     profile_.preamp_db = std::isfinite(profile_.preamp_db) ? std::clamp(profile_.preamp_db, -24.0F, 12.0F) : 0.0F;
     profile_.limiter_ceiling_db = std::isfinite(profile_.limiter_ceiling_db) ? std::clamp(profile_.limiter_ceiling_db, -12.0F, 0.0F) : -1.0F;
-    smoothing_amount_ = std::clamp(settings.smoothing_amount, 0, 100);
-    wet_mix_ = std::clamp(settings.wet_mix, 0, 100);
-    dry_mix_ = 100 - wet_mix_;
+    profile_.effects.bass_db = std::isfinite(profile_.effects.bass_db) ? std::clamp(profile_.effects.bass_db, -12.0F, 12.0F) : 0.0F;
+    profile_.effects.loudness_amount = std::isfinite(profile_.effects.loudness_amount) ? std::clamp(profile_.effects.loudness_amount, 0.0F, 1.0F) : 0.0F;
+    profile_.effects.clarity_db = std::isfinite(profile_.effects.clarity_db) ? std::clamp(profile_.effects.clarity_db, -8.0F, 8.0F) : 0.0F;
+    profile_.effects.stereo_width = std::isfinite(profile_.effects.stereo_width) ? std::clamp(profile_.effects.stereo_width, 0.5F, 1.5F) : 1.0F;
+    profile_.effects.balance = std::isfinite(profile_.effects.balance) ? std::clamp(profile_.effects.balance, -1.0F, 1.0F) : 0.0F;
     preset_index_ = std::clamp(settings.preset_index, -1, static_cast<int>(preset_ids.size()) - 1);
     paused_ = settings.paused;
     sleeping_ = settings.sleeping;
@@ -275,6 +324,7 @@ void console_state::restore_persistent_state(const console_persistent_state& set
     default_start_saved_ = settings.default_start_saved;
     grid_visible_ = settings.grid_visible;
     background_index_ = settings.background_index % 6U;
+    active_tab_ = static_cast<std::size_t>(settings.active_tab) < console_tab_count ? settings.active_tab : console_tab::graphic_eq;
     append_notice(L"Saved settings restored.");
 }
 

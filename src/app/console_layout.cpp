@@ -12,7 +12,7 @@ namespace {
 constexpr console_rect title_box{0.0F, 0.0F, console_design_width, 24.0F};
 constexpr console_rect title_icon_box{6.0F, 4.0F, 15.0F, 15.0F};
 constexpr console_rect title_label_box{27.0F, 3.0F, 220.0F, 18.0F};
-constexpr console_rect menu_box{0.0F, 24.0F, console_design_width, 0.0F};
+constexpr console_rect menu_box{277.0F, 24.0F, console_design_width - 277.0F, 30.0F};
 constexpr float left_bay_width = 277.0F;
 constexpr console_rect left_bay_box{0.0F, menu_box.y + menu_box.height, left_bay_width, console_design_height - (menu_box.y + menu_box.height)};
 
@@ -34,6 +34,10 @@ constexpr float graph_frequency_max_hz = 18000.0F;
 constexpr console_rect equalizer_box{37.0F, 376.0F, 112.0F, 59.0F};
 constexpr console_rect blender_box{};
 constexpr console_rect digital_volume_box{37.0F, 452.0F, 228.0F, 172.0F};
+
+constexpr console_rect page_box{left_bay_width, 54.0F, console_design_width - left_bay_width, 500.0F};
+constexpr float effects_card_width = 260.0F;
+constexpr float effects_card_height = 116.0F;
 
 constexpr float fader_track_width = 25.0F;
 constexpr float fader_arrow_width = 29.0F;
@@ -121,6 +125,14 @@ console_rect console_layout::title_icon() noexcept { return title_icon_box; }
 console_rect console_layout::title_label() noexcept { return title_label_box; }
 
 console_rect console_layout::menu_bar() noexcept { return menu_box; }
+console_rect console_layout::tab_bar() noexcept { return menu_box; }
+console_rect console_layout::tab_rect(console_tab tab) noexcept {
+    constexpr float tab_width = 132.0F;
+    constexpr float tab_gap = 3.0F;
+    const auto index = static_cast<std::size_t>(tab);
+    return {menu_box.x + 10.0F + static_cast<float>(index) * (tab_width + tab_gap), menu_box.y + 3.0F, tab_width, menu_box.height - 3.0F};
+}
+console_rect console_layout::page_rect() noexcept { return page_box; }
 console_rect console_layout::minimize_button() noexcept {
     return {title_box.right() - 49.0F, 4.0F, 17.0F, 16.0F};
 }
@@ -307,6 +319,37 @@ console_rect console_layout::graph_db_label(std::size_t index) noexcept {
     }
 }
 
+console_rect console_layout::effects_card(std::size_t index) noexcept {
+    if (index >= 5) return {};
+    constexpr float gap = 14.0F;
+    const auto column = index % 3U;
+    const auto row = index / 3U;
+    const auto total = effects_card_width * 3.0F + gap * 2.0F;
+    const auto x = page_box.x + (page_box.width - total) * 0.5F + static_cast<float>(column) * (effects_card_width + gap);
+    return {x, page_box.y + 20.0F + static_cast<float>(row) * (effects_card_height + gap), effects_card_width, effects_card_height};
+}
+
+console_rect console_layout::apps_list_frame() noexcept {
+    return {page_box.x + 28.0F, page_box.y + 24.0F, page_box.width - 56.0F, 355.0F};
+}
+
+console_rect console_layout::apps_row(std::size_t index) noexcept {
+    const auto frame = apps_list_frame();
+    constexpr float top = 31.0F;
+    constexpr float height = 34.0F;
+    if (index >= 9) return {};
+    return {frame.x + 7.0F, frame.y + top + static_cast<float>(index) * height, frame.width - 14.0F, height - 3.0F};
+}
+
+console_rect console_layout::monitor_spectrum_frame(bool output) noexcept {
+    const auto width = (page_box.width - 74.0F) * 0.5F;
+    return {page_box.x + 24.0F + (output ? width + 26.0F : 0.0F), page_box.y + 26.0F, width, 220.0F};
+}
+
+console_rect console_layout::monitor_meter_frame() noexcept {
+    return {page_box.x + 24.0F, page_box.y + 267.0F, page_box.width - 48.0F, 145.0F};
+}
+
 console_rect console_layout::smoothing_value() noexcept {
     constexpr float button_width = 16.0F;
     constexpr float display_width = 108.0F;
@@ -424,6 +467,10 @@ console_display_layout console_layout::measure_display_layout(std::wstring_view 
 
 console_rect console_layout::control_rect(console_control control) noexcept {
     switch (control) {
+        case console_control::tab_graphic_eq: return tab_rect(console_tab::graphic_eq);
+        case console_control::tab_effects_rack: return tab_rect(console_tab::effects_rack);
+        case console_control::tab_apps: return tab_rect(console_tab::apps);
+        case console_control::tab_monitor: return tab_rect(console_tab::monitor);
         case console_control::file_menu: return {10.0F, 27.0F, 28.0F, 19.0F};
         case console_control::hardware_menu: return {42.0F, 27.0F, 60.0F, 19.0F};
         case console_control::themes_menu: return {106.0F, 27.0F, 44.0F, 19.0F};
@@ -514,20 +561,55 @@ console_rect console_layout::control_rect(console_control control) noexcept {
             const auto termite_control = group_rect(console_group::termite_control);
             return {termite_control.right() + utility_gap, termite_control.y + 48.0F, 70.0F, 25.0F};
         }
+        case console_control::effect_bass_toggle: { const auto card = effects_card(0); return {card.x + 14.0F, card.y + 39.0F, 82.0F, 25.0F}; }
+        case console_control::effect_bass_down: { const auto card = effects_card(0); return {card.x + 111.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_bass_up: { const auto card = effects_card(0); return {card.x + 212.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_loudness_toggle: { const auto card = effects_card(1); return {card.x + 14.0F, card.y + 39.0F, 82.0F, 25.0F}; }
+        case console_control::effect_loudness_down: { const auto card = effects_card(1); return {card.x + 111.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_loudness_up: { const auto card = effects_card(1); return {card.x + 212.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_clarity_toggle: { const auto card = effects_card(2); return {card.x + 14.0F, card.y + 39.0F, 82.0F, 25.0F}; }
+        case console_control::effect_clarity_down: { const auto card = effects_card(2); return {card.x + 111.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_clarity_up: { const auto card = effects_card(2); return {card.x + 212.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_stereo_toggle: { const auto card = effects_card(3); return {card.x + 14.0F, card.y + 39.0F, 82.0F, 25.0F}; }
+        case console_control::effect_width_down: { const auto card = effects_card(3); return {card.x + 111.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_width_up: { const auto card = effects_card(3); return {card.x + 212.0F, card.y + 39.0F, 25.0F, 25.0F}; }
+        case console_control::effect_mono: { const auto card = effects_card(3); return {card.x + 88.0F, card.y + 77.0F, 84.0F, 24.0F}; }
+        case console_control::effect_balance_left: { const auto card = effects_card(4); return {card.x + 42.0F, card.y + 48.0F, 40.0F, 28.0F}; }
+        case console_control::effect_balance_right: { const auto card = effects_card(4); return {card.right() - 82.0F, card.y + 48.0F, 40.0F, 28.0F}; }
+        case console_control::effect_reset: { const auto card = effects_card(4); return {card.x + 75.0F, card.y + 83.0F, 110.0F, 24.0F}; }
+        case console_control::apps_refresh: { const auto list = apps_list_frame(); return {list.x + 8.0F, list.bottom() + 14.0F, 94.0F, 28.0F}; }
+        case console_control::apps_route_selected: { const auto list = apps_list_frame(); return {list.x + 110.0F, list.bottom() + 14.0F, 122.0F, 28.0F}; }
+        case console_control::apps_return_selected: { const auto list = apps_list_frame(); return {list.x + 240.0F, list.bottom() + 14.0F, 130.0F, 28.0F}; }
+        case console_control::apps_open_mixer: { const auto list = apps_list_frame(); return {list.right() - 128.0F, list.bottom() + 14.0F, 120.0F, 28.0F}; }
         default: return {};
     }
 }
 
-console_hit console_layout::hit_test(console_point point, std::size_t message_count, float scroll_offset) noexcept {
+console_hit console_layout::hit_test(console_point point, std::size_t message_count, float scroll_offset, console_tab active_tab) noexcept {
     if (minimize_button().contains(point)) return {console_control::minimize};
     if (close_button().contains(point)) return {console_control::close};
+    constexpr std::array tabs{console_control::tab_graphic_eq, console_control::tab_effects_rack, console_control::tab_apps, console_control::tab_monitor};
+    for (const auto tab : tabs) if (control_rect(tab).contains(point)) return {tab};
     if (status_scroll_thumb(message_count, scroll_offset).contains(point)) return {console_control::scroll_thumb};
 
-    for (std::size_t index = 0; index < console_fader_count; ++index) {
-        if (fader_up(index).contains(point)) return {console_control::fader_up, static_cast<int>(index)};
-        if (fader_track(index).contains(point)) return {console_control::fader_track, static_cast<int>(index)};
-        if (fader_down(index).contains(point)) return {console_control::fader_down, static_cast<int>(index)};
-        if (fader_value(index).contains(point)) return {console_control::fader_value, static_cast<int>(index)};
+    if (active_tab == console_tab::graphic_eq) {
+        for (std::size_t index = 0; index < console_fader_count; ++index) {
+            if (fader_up(index).contains(point)) return {console_control::fader_up, static_cast<int>(index)};
+            if (fader_track(index).contains(point)) return {console_control::fader_track, static_cast<int>(index)};
+            if (fader_down(index).contains(point)) return {console_control::fader_down, static_cast<int>(index)};
+            if (fader_value(index).contains(point)) return {console_control::fader_value, static_cast<int>(index)};
+        }
+    } else if (active_tab == console_tab::effects_rack) {
+        constexpr std::array effects{console_control::effect_bass_toggle, console_control::effect_bass_down, console_control::effect_bass_up,
+            console_control::effect_loudness_toggle, console_control::effect_loudness_down, console_control::effect_loudness_up,
+            console_control::effect_clarity_toggle, console_control::effect_clarity_down, console_control::effect_clarity_up,
+            console_control::effect_stereo_toggle, console_control::effect_width_down, console_control::effect_width_up,
+            console_control::effect_mono, console_control::effect_balance_left, console_control::effect_balance_right, console_control::effect_reset};
+        for (const auto control : effects) if (control_rect(control).contains(point)) return {control};
+    } else if (active_tab == console_tab::apps) {
+        for (std::size_t index = 0; index < 9; ++index) if (apps_row(index).contains(point)) return {console_control::apps_row, static_cast<int>(index)};
+        constexpr std::array apps{console_control::apps_refresh, console_control::apps_route_selected, console_control::apps_return_selected, console_control::apps_open_mixer};
+        for (const auto control : apps) if (control_rect(control).contains(point)) return {control};
     }
 
     for (std::size_t index = 0; index < left_buttons.size(); ++index) {

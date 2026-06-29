@@ -64,6 +64,10 @@ float sinc(float value) noexcept {
     return std::abs(value) < 0.00001F ? 1.0F : std::sin(pi * value) / (pi * value);
 }
 
+float linear_to_db(float value) noexcept {
+    return 20.0F * std::log10(std::max(value, 0.0000001F));
+}
+
 }  // namespace
 
 std::size_t audio_format::bytes_per_sample() const noexcept {
@@ -152,6 +156,110 @@ void equal_power_crossfade(const float* active,
         }
     }
 }
+
+float monitor_band_frequency_hz(std::size_t index) noexcept {
+    constexpr float first = 20.0F;
+    constexpr float last = 20000.0F;
+    if (index >= audio_monitor_band_count) return last;
+    const auto fraction = static_cast<float>(index) / static_cast<float>(audio_monitor_band_count - 1U);
+    return first * std::pow(last / first, fraction);
+}
+
+void audio_monitor_analyzer::configure(std::uint32_t sample_rate, std::size_t channels) noexcept {
+    sample_rate_ = std::max<std::uint32_t>(8000, sample_rate);
+    channels_ = std::clamp<std::size_t>(channels, 1, audio_max_channels);
+    reset();
+}
+
+void audio_monitor_analyzer::reset() noexcept {
+    input_window_.fill(0.0F);
+    output_window_.fill(0.0F);
+    snapshot_ = {};
+    snapshot_.stereo_input = channels_ >= 2;
+    window_write_ = 0;
+    captured_frames_ = 0;
+    frames_until_analysis_ = std::max<std::size_t>(1, sample_rate_ / 20U);
+    input_square_left_ = input_square_right_ = output_square_left_ = output_square_right_ = 0.0F;
+    meter_frames_ = 0;
+}
+
+void audio_monitor_analyzer::accumulate_meter(const float* source, std::size_t frame, bool input) noexcept {
+    const auto offset = frame * channels_;
+    const auto left = std::isfinite(source[offset]) ? source[offset] : 0.0F;
+    const auto right = channels_ >= 2 && std::isfinite(source[offset + 1]) ? source[offset + 1] : left;
+    if (input) {
+        snapshot_.input_peak_left = std::max(snapshot_.input_peak_left, std::abs(left));
+        snapshot_.input_peak_right = std::max(snapshot_.input_peak_right, std::abs(right));
+        input_square_left_ += left * left;
+        input_square_right_ += right * right;
+    } else {
+        snapshot_.output_peak_left = std::max(snapshot_.output_peak_left, std::abs(left));
+        snapshot_.output_peak_right = std::max(snapshot_.output_peak_right, std::abs(right));
+        output_square_left_ += left * left;
+        output_square_right_ += right * right;
+    }
+}
+
+bool audio_monitor_analyzer::process(const float* input, const float* output, std::size_t frame_count,
+                                     std::uint64_t limiter_clamps) noexcept {
+    if (input == nullptr || output == nullptr || channels_ == 0) return false;
+    bool published{};
+    for (std::size_t frame = 0; frame < frame_count; ++frame) {
+        accumulate_meter(input, frame, true);
+        accumulate_meter(output, frame, false);
+        const auto offset = frame * channels_;
+        const auto input_mono = channels_ >= 2 ? (input[offset] + input[offset + 1]) * 0.5F : input[offset];
+        const auto output_mono = channels_ >= 2 ? (output[offset] + output[offset + 1]) * 0.5F : output[offset];
+        input_window_[window_write_] = std::isfinite(input_mono) ? input_mono : 0.0F;
+        output_window_[window_write_] = std::isfinite(output_mono) ? output_mono : 0.0F;
+        window_write_ = (window_write_ + 1U) % fft_window_frames;
+        captured_frames_ = std::min(captured_frames_ + 1U, fft_window_frames);
+        ++meter_frames_;
+        if (--frames_until_analysis_ != 0) continue;
+        analyze();
+        const auto frames = std::max<std::size_t>(1, meter_frames_);
+        snapshot_.input_rms_left = std::sqrt(input_square_left_ / static_cast<float>(frames));
+        snapshot_.input_rms_right = std::sqrt(input_square_right_ / static_cast<float>(frames));
+        snapshot_.output_rms_left = std::sqrt(output_square_left_ / static_cast<float>(frames));
+        snapshot_.output_rms_right = std::sqrt(output_square_right_ / static_cast<float>(frames));
+        snapshot_.limiter_clamp_count += limiter_clamps;
+        snapshot_.stereo_input = channels_ >= 2;
+        input_square_left_ = input_square_right_ = output_square_left_ = output_square_right_ = 0.0F;
+        meter_frames_ = 0;
+        frames_until_analysis_ = std::max<std::size_t>(1, sample_rate_ / 20U);
+        published = true;
+    }
+    if (!published) snapshot_.limiter_clamp_count += limiter_clamps;
+    return published;
+}
+
+void audio_monitor_analyzer::analyze() noexcept {
+    constexpr float two_pi = 6.28318530718F;
+    const auto frames = std::max<std::size_t>(1, captured_frames_);
+    for (std::size_t band = 0; band < audio_monitor_band_count; ++band) {
+        const auto frequency = std::min(monitor_band_frequency_hz(band), static_cast<float>(sample_rate_) * 0.45F);
+        float input_real{};
+        float input_imaginary{};
+        float output_real{};
+        float output_imaginary{};
+        for (std::size_t sample = 0; sample < frames; ++sample) {
+            const auto source_index = (window_write_ + fft_window_frames - frames + sample) % fft_window_frames;
+            const auto window = 0.5F - 0.5F * std::cos(two_pi * static_cast<float>(sample) / static_cast<float>(std::max<std::size_t>(1, frames - 1U)));
+            const auto phase = two_pi * frequency * static_cast<float>(sample) / static_cast<float>(sample_rate_);
+            const auto cosine = std::cos(phase) * window;
+            const auto sine = std::sin(phase) * window;
+            input_real += input_window_[source_index] * cosine;
+            input_imaginary -= input_window_[source_index] * sine;
+            output_real += output_window_[source_index] * cosine;
+            output_imaginary -= output_window_[source_index] * sine;
+        }
+        const auto normalize = 2.0F / static_cast<float>(frames);
+        snapshot_.input_spectrum_db[band] = std::clamp(linear_to_db(std::sqrt(input_real * input_real + input_imaginary * input_imaginary) * normalize), -96.0F, 0.0F);
+        snapshot_.output_spectrum_db[band] = std::clamp(linear_to_db(std::sqrt(output_real * output_real + output_imaginary * output_imaginary) * normalize), -96.0F, 0.0F);
+    }
+}
+
+const audio_monitor_snapshot& audio_monitor_analyzer::snapshot() const noexcept { return snapshot_; }
 
 bool spsc_frame_ring::configure(std::size_t capacity_frames, std::size_t channels) {
     if (capacity_frames < 2 || channels == 0 || channels > audio_max_channels) return false;

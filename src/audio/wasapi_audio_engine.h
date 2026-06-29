@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/audio_pipeline.h"
 #include "dsp/eq_profile.h"
 
 #include <array>
@@ -58,6 +59,7 @@ public:
     [[nodiscard]] bool is_running() const noexcept;
     [[nodiscard]] std::string status_text() const;
     [[nodiscard]] audio_diagnostics diagnostics() const;
+    [[nodiscard]] audio_monitor_snapshot monitor() const noexcept;
 
 private:
     friend class endpoint_notification_client;
@@ -68,6 +70,7 @@ private:
     void request_recovery() noexcept;
     void publish_profile(const eq_profile& profile) noexcept;
     [[nodiscard]] eq_profile snapshot_profile(std::uint64_t& revision) const noexcept;
+    void publish_monitor(const audio_monitor_snapshot& snapshot) noexcept;
     void set_status(std::string value, engine_state state, std::string recovery_reason = {});
     void set_stream_diagnostics(const stream_session& session, engine_state state, std::string recovery_reason = {});
 
@@ -88,7 +91,31 @@ private:
     std::atomic<std::uint32_t> preamp_bits_{};
     std::atomic<std::uint32_t> limiter_bits_{};
     std::atomic<bool> profile_enabled_{true};
+    std::atomic<bool> bass_enabled_{};
+    std::atomic<std::uint32_t> bass_bits_{};
+    std::atomic<bool> loudness_enabled_{};
+    std::atomic<std::uint32_t> loudness_bits_{};
+    std::atomic<bool> clarity_enabled_{};
+    std::atomic<std::uint32_t> clarity_bits_{};
+    std::atomic<bool> stereo_enabled_{};
+    std::atomic<std::uint32_t> stereo_width_bits_{};
+    std::atomic<bool> mono_{};
+    std::atomic<std::uint32_t> balance_bits_{};
     std::atomic<std::uint64_t> profile_revision_{};
+
+    std::array<std::atomic<std::uint32_t>, audio_monitor_band_count> monitor_input_spectrum_bits_{};
+    std::array<std::atomic<std::uint32_t>, audio_monitor_band_count> monitor_output_spectrum_bits_{};
+    std::atomic<std::uint32_t> monitor_input_peak_left_bits_{};
+    std::atomic<std::uint32_t> monitor_input_peak_right_bits_{};
+    std::atomic<std::uint32_t> monitor_input_rms_left_bits_{};
+    std::atomic<std::uint32_t> monitor_input_rms_right_bits_{};
+    std::atomic<std::uint32_t> monitor_output_peak_left_bits_{};
+    std::atomic<std::uint32_t> monitor_output_peak_right_bits_{};
+    std::atomic<std::uint32_t> monitor_output_rms_left_bits_{};
+    std::atomic<std::uint32_t> monitor_output_rms_right_bits_{};
+    std::atomic<std::uint64_t> monitor_limiter_clamps_{};
+    std::atomic<bool> monitor_stereo_input_{};
+    std::atomic<std::uint64_t> monitor_revision_{};
 
     std::thread audio_thread_;
     mutable std::mutex status_mutex_;

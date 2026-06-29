@@ -43,6 +43,12 @@ void test_hit_testing() {
     assert(track.control == termite::console_control::fader_track);
     assert(track.index == 0);
 
+    const auto inactive_track = termite::console_layout::hit_test({first_track.x + first_track.width * 0.5F, first_track.y + first_track.height * 0.5F}, 20, 0.0F,
+                                                                    termite::console_tab::effects_rack);
+    assert(inactive_track.control != termite::console_control::fader_track);
+    const auto effects_tab = termite::console_layout::tab_rect(termite::console_tab::effects_rack);
+    assert(termite::console_layout::hit_test({effects_tab.x + 3.0F, effects_tab.y + 3.0F}, 20, 0.0F).control == termite::console_control::tab_effects_rack);
+
     const auto first_value = termite::console_layout::fader_value(0);
     const auto value = termite::console_layout::hit_test({first_value.x + first_value.width * 0.5F, first_value.y + first_value.height * 0.5F}, 20, 0.0F);
     assert(value.control == termite::console_control::fader_value);
@@ -74,6 +80,12 @@ void test_hit_testing() {
     }
     assert(termite::console_layout::group_rect(termite::console_group::blender).width == 0.0F);
     assert(termite::console_layout::group_rect(termite::console_group::smoothing).width == 0.0F);
+
+    for (std::size_t index = 0; index < 5; ++index) {
+        const auto card = termite::console_layout::effects_card(index);
+        assert(card.x >= termite::console_layout::page_rect().x && card.right() <= termite::console_layout::page_rect().right());
+        assert(card.y >= termite::console_layout::page_rect().y && card.bottom() <= termite::console_layout::page_rect().bottom());
+    }
 }
 
 void test_title_and_menu_alignment() {
@@ -214,8 +226,11 @@ void test_settings_store() {
     termite::termite_settings settings;
     settings.console.profile.bands[4].gain_db = 7.5F;
     settings.console.profile.bands[4].q = 2.3F;
-    settings.console.wet_mix = 35;
-    settings.console.dry_mix = 65;
+    settings.console.profile.effects.bass_enabled = true;
+    settings.console.profile.effects.bass_db = 5.0F;
+    settings.console.profile.effects.stereo_enabled = true;
+    settings.console.profile.effects.stereo_width = 1.2F;
+    settings.console.active_tab = termite::console_tab::effects_rack;
     settings.console.grid_visible = false;
     settings.console.preset_index = static_cast<int>(termite::console_state::preset_count()) - 1;
     settings.window = {120, 80, 1245, 700, true};
@@ -228,6 +243,9 @@ void test_settings_store() {
     assert(std::abs(loaded.settings.console.profile.bands[4].q - 2.3F) < 0.001F);
     assert(!loaded.settings.console.grid_visible);
     assert(loaded.settings.console.preset_index == static_cast<int>(termite::console_state::preset_count()) - 1);
+    assert(loaded.settings.console.profile.effects.bass_enabled);
+    assert(std::abs(loaded.settings.console.profile.effects.bass_db - 5.0F) < 0.001F);
+    assert(loaded.settings.console.active_tab == termite::console_tab::effects_rack);
     assert(loaded.settings.window.valid);
     assert(loaded.settings.routing_executables.size() == 2);
 
@@ -239,6 +257,8 @@ void test_settings_store() {
     custom_profile.bands[2].shape = termite::filter_shape::low_shelf;
     custom_profile.bands[2].gain_db = 8.5F;
     custom_profile.bands[2].q = 0.7F;
+    custom_profile.effects.clarity_enabled = true;
+    custom_profile.effects.clarity_db = 3.0F;
     assert(termite::settings_store::save_profile_file(profile_path, custom_profile, failure));
     const auto custom_loaded = termite::settings_store::load_profile_file(profile_path);
     assert(custom_loaded.loaded);
@@ -247,7 +267,25 @@ void test_settings_store() {
     assert(custom_loaded.profile.bands[2].shape == termite::filter_shape::low_shelf);
     assert(std::abs(custom_loaded.profile.bands[2].gain_db - 8.5F) < 0.001F);
     assert(std::abs(custom_loaded.profile.bands[2].q - 0.7F) < 0.001F);
+    assert(custom_loaded.profile.effects.clarity_enabled);
+    assert(std::abs(custom_loaded.profile.effects.clarity_db - 3.0F) < 0.001F);
     std::filesystem::remove(profile_path, error);
+
+    const auto legacy_profile_path = std::filesystem::temp_directory_path() / "termite-v1-profile.termiteeq";
+    {
+        std::ofstream legacy(legacy_profile_path, std::ios::trunc);
+        legacy << "{\"format\":\"termite-eq-profile\",\"version\":1,\"profile\":{\"enabled\":true,\"preamp_db\":0,\"limiter_ceiling_db\":-1,\"bands\":[";
+        for (std::size_t index = 0; index < termite::graphic_band_count; ++index) {
+            if (index != 0) legacy << ',';
+            legacy << "{\"shape\":0,\"gain_db\":0,\"q\":1,\"enabled\":true}";
+        }
+        legacy << "]}}";
+    }
+    const auto legacy_loaded = termite::settings_store::load_profile_file(legacy_profile_path);
+    assert(legacy_loaded.loaded);
+    assert(!legacy_loaded.profile.effects.bass_enabled);
+    assert(std::abs(legacy_loaded.profile.effects.stereo_width - 1.0F) < 0.001F);
+    std::filesystem::remove(legacy_profile_path, error);
 
     settings.console.profile.bands[4].gain_db = 999.0F;
     settings.console.profile.bands[4].q = 99.0F;
@@ -319,7 +357,7 @@ void test_console_commands() {
     assert(state.set_fader_shape(0, termite::filter_shape::notch));
     assert(state.set_fader_enabled(0, false));
     assert(!state.profile().bands[0].enabled);
-    assert(termite::console_state::preset_count() == 10);
+    assert(termite::console_state::preset_count() == 12);
     for (std::size_t index = 0; index < termite::console_state::preset_count(); ++index) {
         assert(!termite::console_state::preset_name(index).empty());
         assert(state.apply_preset(index));
@@ -330,7 +368,7 @@ void test_console_commands() {
             assert(band.gain_db >= -20.0F && band.gain_db <= 20.0F);
         }
     }
-    assert(state.preset_label() == L"Treble cut");
+    assert(state.preset_label() == L"Wide music");
     assert(!state.apply_preset(termite::console_state::preset_count()));
 
     auto custom_profile = termite::eq_profile::flat();
@@ -346,6 +384,10 @@ void test_console_commands() {
 
     const auto route = state.activate(termite::console_control::route_apps);
     assert(route.open_routing);
+    const auto effects = state.activate(termite::console_control::effect_bass_toggle);
+    assert(effects.profile_changed && state.profile().effects.bass_enabled);
+    const auto tab = state.activate(termite::console_control::tab_monitor);
+    assert(!tab.profile_changed && state.active_tab() == termite::console_tab::monitor);
     const auto diagnostics = state.activate(termite::console_control::status_sync);
     assert(diagnostics.open_diagnostics);
     assert(!diagnostics.open_routing);
