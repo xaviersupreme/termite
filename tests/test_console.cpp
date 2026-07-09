@@ -43,11 +43,10 @@ void test_hit_testing() {
     assert(track.control == termite::console_control::fader_track);
     assert(track.index == 0);
 
-    const auto inactive_track = termite::console_layout::hit_test({first_track.x + first_track.width * 0.5F, first_track.y + first_track.height * 0.5F}, 20, 0.0F,
-                                                                    termite::console_tab::effects_rack);
-    assert(inactive_track.control != termite::console_control::fader_track);
-    const auto effects_tab = termite::console_layout::tab_rect(termite::console_tab::effects_rack);
-    assert(termite::console_layout::hit_test({effects_tab.x + 3.0F, effects_tab.y + 3.0F}, 20, 0.0F).control == termite::console_control::tab_effects_rack);
+    const auto single_console_track = termite::console_layout::hit_test({first_track.x + first_track.width * 0.5F, first_track.y + first_track.height * 0.5F}, 20, 0.0F,
+                                                                          termite::console_tab::effects_rack);
+    assert(single_console_track.control == termite::console_control::fader_track);
+    assert(termite::console_layout::tab_bar().height == 0.0F);
 
     const auto first_value = termite::console_layout::fader_value(0);
     const auto value = termite::console_layout::hit_test({first_value.x + first_value.width * 0.5F, first_value.y + first_value.height * 0.5F}, 20, 0.0F);
@@ -81,10 +80,12 @@ void test_hit_testing() {
     assert(termite::console_layout::group_rect(termite::console_group::blender).width == 0.0F);
     assert(termite::console_layout::group_rect(termite::console_group::smoothing).width == 0.0F);
 
-    for (std::size_t index = 0; index < 5; ++index) {
-        const auto card = termite::console_layout::effects_card(index);
-        assert(card.x >= termite::console_layout::page_rect().x && card.right() <= termite::console_layout::page_rect().right());
-        assert(card.y >= termite::console_layout::page_rect().y && card.bottom() <= termite::console_layout::page_rect().bottom());
+    for (const auto control : {termite::console_control::effect_bass_toggle, termite::console_control::effect_loudness_toggle,
+                               termite::console_control::effect_clarity_toggle, termite::console_control::effect_stereo_toggle,
+                               termite::console_control::effect_mono, termite::console_control::effect_balance_left,
+                               termite::console_control::effect_balance_right}) {
+        const auto box = termite::console_layout::control_rect(control);
+        assert(box.width > 0.0F && box.height > 0.0F);
     }
 }
 
@@ -165,18 +166,21 @@ void test_derived_console_geometry() {
 
     const auto profiles = termite::console_layout::group_rect(termite::console_group::profiles);
     const auto presets = termite::console_layout::group_rect(termite::console_group::presets);
+    const auto tone = termite::console_layout::group_rect(termite::console_group::tone);
+    const auto stereo = termite::console_layout::group_rect(termite::console_group::stereo);
     const auto control = termite::console_layout::group_rect(termite::console_group::termite_control);
     assert(std::abs((presets.x - profiles.right()) - 6.0F) < 0.001F);
-    assert(std::abs((control.x - presets.right()) - 6.0F) < 0.001F);
+    assert(std::abs((tone.x - presets.right()) - 6.0F) < 0.001F);
+    assert(std::abs((stereo.x - tone.right()) - 6.0F) < 0.001F);
+    assert(std::abs((control.x - stereo.right()) - 6.0F) < 0.001F);
     const auto fader_center = [](std::size_t index) {
         const auto track = termite::console_layout::fader_track(index);
         return track.x + track.width * 0.5F;
     };
-    assert(std::abs((profiles.right() + presets.x) * 0.5F - (fader_center(6) + fader_center(7)) * 0.5F) < 0.001F);
+    assert(std::abs((profiles.right() + presets.x) * 0.5F - (fader_center(4) + fader_center(5)) * 0.5F) < 0.001F);
     const auto grid = termite::console_layout::control_rect(termite::console_control::grid);
-    assert(grid.x >= control.right());
-    assert(grid.right() <= fader_bank.right());
-    assert(fader_bank.right() - grid.right() < 1.0F);
+    assert(grid.x >= control.x);
+    assert(grid.right() <= control.right());
     const auto detect = termite::console_layout::control_rect(termite::console_control::detect);
     const auto sync = termite::console_layout::control_rect(termite::console_control::status_sync);
     const auto clear_log = termite::console_layout::control_rect(termite::console_control::clear_info);
@@ -230,7 +234,6 @@ void test_settings_store() {
     settings.console.profile.effects.bass_db = 5.0F;
     settings.console.profile.effects.stereo_enabled = true;
     settings.console.profile.effects.stereo_width = 1.2F;
-    settings.console.active_tab = termite::console_tab::effects_rack;
     settings.console.grid_visible = false;
     settings.console.preset_index = static_cast<int>(termite::console_state::preset_count()) - 1;
     settings.window = {120, 80, 1245, 700, true};
@@ -245,7 +248,7 @@ void test_settings_store() {
     assert(loaded.settings.console.preset_index == static_cast<int>(termite::console_state::preset_count()) - 1);
     assert(loaded.settings.console.profile.effects.bass_enabled);
     assert(std::abs(loaded.settings.console.profile.effects.bass_db - 5.0F) < 0.001F);
-    assert(loaded.settings.console.active_tab == termite::console_tab::effects_rack);
+    assert(loaded.settings.console.active_tab == termite::console_tab::graphic_eq);
     assert(loaded.settings.window.valid);
     assert(loaded.settings.routing_executables.size() == 2);
 
@@ -386,8 +389,6 @@ void test_console_commands() {
     assert(route.open_routing);
     const auto effects = state.activate(termite::console_control::effect_bass_toggle);
     assert(effects.profile_changed && state.profile().effects.bass_enabled);
-    const auto tab = state.activate(termite::console_control::tab_monitor);
-    assert(!tab.profile_changed && state.active_tab() == termite::console_tab::monitor);
     const auto diagnostics = state.activate(termite::console_control::status_sync);
     assert(diagnostics.open_diagnostics);
     assert(!diagnostics.open_routing);

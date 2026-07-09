@@ -737,18 +737,12 @@ void console_window::draw_console() {
     skin_->draw_background({0.0F, 0.0F, console_design_width, console_design_height}, state_.background_index());
     draw_title_and_menu();
     draw_left_bay();
-    switch (state_.active_tab()) {
-        case console_tab::graphic_eq:
-            draw_graph();
-            draw_faders();
-            break;
-        case console_tab::effects_rack: draw_effects_rack(); break;
-        case console_tab::apps: draw_apps_page(); break;
-        case console_tab::monitor: draw_monitor_page(); break;
-    }
+    draw_graph();
+    draw_faders();
     draw_bottom_controls();
     draw_preset_dropdown();
-    if (state_.active_tab() == console_tab::graphic_eq) draw_fader_filter_menu();
+    draw_fader_filter_menu();
+    draw_routing_picker();
     draw_diagnostics_popup();
 }
 
@@ -760,12 +754,6 @@ void console_window::draw_title_and_menu() {
 
     skin_->draw_caption_button(console_layout::minimize_button(), L"-", visual_state_for({console_control::minimize}, hot_hit_, pressed_hit_));
     skin_->draw_caption_button(console_layout::close_button(), L"X", visual_state_for({console_control::close}, hot_hit_, pressed_hit_));
-    constexpr std::array labels{L"Graphic EQ", L"Effects Rack", L"Apps", L"Monitor"};
-    constexpr std::array controls{console_control::tab_graphic_eq, console_control::tab_effects_rack, console_control::tab_apps, console_control::tab_monitor};
-    for (std::size_t index = 0; index < labels.size(); ++index) {
-        skin_->draw_tab(console_layout::tab_rect(static_cast<console_tab>(index)), labels[index], state_.active_tab() == static_cast<console_tab>(index),
-                        visual_state_for({controls[index]}, hot_hit_, pressed_hit_, state_.active_tab() == static_cast<console_tab>(index)));
-    }
 }
 
 void console_window::draw_left_bay() {
@@ -1010,7 +998,9 @@ void console_window::draw_bottom_controls() {
     };
     draw_labeled_group(console_layout::group_rect(console_group::profiles), L"Profiles");
     draw_labeled_group(console_layout::group_rect(console_group::presets), L"Pre-sets");
-    draw_labeled_group(console_layout::group_rect(console_group::termite_control), L"App routing");
+    draw_labeled_group(console_layout::group_rect(console_group::tone), L"Tone shaping");
+    draw_labeled_group(console_layout::group_rect(console_group::stereo), L"Stereo / balance");
+    draw_labeled_group(console_layout::group_rect(console_group::termite_control), L"Termite control");
 
     skin_->draw_button(console_layout::control_rect(console_control::profile_open), L"Open profile", visual_state_for({console_control::profile_open}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::profile_save), L"Save profile", visual_state_for({console_control::profile_save}, hot_hit_, pressed_hit_));
@@ -1018,6 +1008,20 @@ void console_window::draw_bottom_controls() {
     skin_->draw_combo_box(console_layout::control_rect(console_control::preset_cycle), state_.preset_label(), preset_dropdown_open_,
                           preset_dropdown_open_ ? console_visual_state::selected
                                                 : visual_state_for({console_control::preset_cycle}, hot_hit_, pressed_hit_));
+    const auto& effects = state_.profile().effects;
+    skin_->draw_button(console_layout::control_rect(console_control::effect_bass_toggle), std::format(L"Bass {:+.0f}", effects.bass_db),
+                       visual_state_for({console_control::effect_bass_toggle}, hot_hit_, pressed_hit_, effects.bass_enabled));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_loudness_toggle), effects.loudness_enabled ? L"Loudness" : L"Loudness",
+                       visual_state_for({console_control::effect_loudness_toggle}, hot_hit_, pressed_hit_, effects.loudness_enabled));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_clarity_toggle), std::format(L"Clarity {:+.0f}", effects.clarity_db),
+                       visual_state_for({console_control::effect_clarity_toggle}, hot_hit_, pressed_hit_, effects.clarity_enabled));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_reset), L"Reset FX", visual_state_for({console_control::effect_reset}, hot_hit_, pressed_hit_));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_stereo_toggle), std::format(L"Wide stereo {:.0f}%", effects.stereo_width * 100.0F),
+                       visual_state_for({console_control::effect_stereo_toggle}, hot_hit_, pressed_hit_, effects.stereo_enabled));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_mono), effects.mono ? L"Mono" : L"Mono",
+                       visual_state_for({console_control::effect_mono}, hot_hit_, pressed_hit_, effects.mono));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_balance_left), L"L", visual_state_for({console_control::effect_balance_left}, hot_hit_, pressed_hit_));
+    skin_->draw_button(console_layout::control_rect(console_control::effect_balance_right), L"R", visual_state_for({console_control::effect_balance_right}, hot_hit_, pressed_hit_));
     skin_->draw_button(console_layout::control_rect(console_control::route_apps), L"Route apps", visual_state_for({console_control::route_apps}, hot_hit_, pressed_hit_));
     skin_->draw_checkbox(console_layout::control_rect(console_control::grid), state_.grid_visible(), L"Grid");
 }
@@ -1488,8 +1492,7 @@ void console_window::save_profile_file() {
 void console_window::show_routing_picker() {
     filter_menu_band_ = -1;
     preset_dropdown_open_ = false;
-    routing_picker_open_ = false;
-    state_.set_active_tab(console_tab::apps);
+    routing_picker_open_ = true;
     routing_picker_pressed_row_ = -1;
     routing_picker_hot_row_ = -1;
     refresh_routing_picker();
