@@ -102,6 +102,8 @@ enum class console_group {
     digital_volume,
     profiles,
     presets,
+    tone,
+    stereo,
     smoothing,
     termite_control,
 };

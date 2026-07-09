@@ -83,7 +83,6 @@ console_action_result console_state::activate(console_control control) {
             append_notice(L"Use Route apps to send an open app to CABLE Input while Termite is running.");
             break;
         case console_control::route_apps:
-            active_tab_ = console_tab::apps;
             append_notice(L"Choose open apps, then Termite will route their active audio to CABLE Input.");
             result.open_routing = true;
             break;
@@ -177,6 +176,7 @@ console_action_result console_state::activate(console_control control) {
             append_notice(L"Use Route apps to send an open app to CABLE Input while Termite is running.");
             break;
         case console_control::effect_bass_toggle:
+            if (!profile_.effects.bass_enabled && std::abs(profile_.effects.bass_db) < 0.01F) profile_.effects.bass_db = 4.0F;
             profile_.effects.bass_enabled = !profile_.effects.bass_enabled;
             result.profile_changed = true;
             break;
@@ -189,6 +189,7 @@ console_action_result console_state::activate(console_control control) {
             result.profile_changed = true;
             break;
         case console_control::effect_loudness_toggle:
+            if (!profile_.effects.loudness_enabled && profile_.effects.loudness_amount < 0.01F) profile_.effects.loudness_amount = 0.50F;
             profile_.effects.loudness_enabled = !profile_.effects.loudness_enabled;
             result.profile_changed = true;
             break;
@@ -201,6 +202,7 @@ console_action_result console_state::activate(console_control control) {
             result.profile_changed = true;
             break;
         case console_control::effect_clarity_toggle:
+            if (!profile_.effects.clarity_enabled && std::abs(profile_.effects.clarity_db) < 0.01F) profile_.effects.clarity_db = 2.0F;
             profile_.effects.clarity_enabled = !profile_.effects.clarity_enabled;
             result.profile_changed = true;
             break;
@@ -213,6 +215,7 @@ console_action_result console_state::activate(console_control control) {
             result.profile_changed = true;
             break;
         case console_control::effect_stereo_toggle:
+            if (!profile_.effects.stereo_enabled && std::abs(profile_.effects.stereo_width - 1.0F) < 0.01F) profile_.effects.stereo_width = 1.20F;
             profile_.effects.stereo_enabled = !profile_.effects.stereo_enabled;
             result.profile_changed = true;
             break;
@@ -324,7 +327,9 @@ void console_state::restore_persistent_state(const console_persistent_state& set
     default_start_saved_ = settings.default_start_saved;
     grid_visible_ = settings.grid_visible;
     background_index_ = settings.background_index % 6U;
-    active_tab_ = static_cast<std::size_t>(settings.active_tab) < console_tab_count ? settings.active_tab : console_tab::graphic_eq;
+    // v2 used a tabbed prototype.  The single-console design always comes
+    // back to Graphic EQ, while still accepting old settings files.
+    active_tab_ = console_tab::graphic_eq;
     append_notice(L"Saved settings restored.");
 }
 
