@@ -1,0 +1,3 @@
+#include "termite_resource.h"
+
+IDI_TERMITE ICON "../assets/termite.ico"
