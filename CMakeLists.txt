@@ -6,9 +6,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(termite_dsp
-    src/dsp/eq_profile.cpp
+    sound/eq/eq_profile.cpp
+    host/eq_bridge_profile.cpp
+    host/eq_bridge_profile.h
+    host/eq_bridge_protocol.h
 )
-target_include_directories(termite_dsp PUBLIC src)
+target_include_directories(termite_dsp PUBLIC .)
 target_compile_features(termite_dsp PUBLIC cxx_std_20)
 
 if(MSVC)
@@ -18,12 +21,12 @@ else()
 endif()
 
 add_library(termite_audio_core
-    src/audio/audio_pipeline.cpp
-    src/audio/audio_pipeline.h
-    src/audio/routing_policy.cpp
-    src/audio/routing_policy.h
+    sound/audio_pipeline.cpp
+    sound/audio_pipeline.h
+    sound/routing_policy.cpp
+    sound/routing_policy.h
 )
-target_include_directories(termite_audio_core PUBLIC src)
+target_include_directories(termite_audio_core PUBLIC .)
 target_compile_features(termite_audio_core PUBLIC cxx_std_20)
 if(MSVC)
     target_compile_options(termite_audio_core PRIVATE /W4 /permissive-)
@@ -41,34 +44,23 @@ if(TERMITE_BUILD_APP)
 
     add_executable(termite WIN32)
     target_sources(termite PRIVATE
-        src/app/windows_main.cpp
-        src/app/console_layout.cpp
-        src/app/console_layout.h
-        src/app/console_skin.cpp
-        src/app/console_skin.h
-        src/app/console_state.cpp
-        src/app/console_state.h
-        src/app/settings_store.cpp
-        src/app/settings_store.h
-        src/app/console_window.cpp
-        src/app/console_window.h
-        src/app/termite.rc
-        src/audio/wasapi_audio_engine.cpp
-        src/audio/wasapi_audio_engine.h
-        src/audio/app_audio_policy.cpp
-        src/audio/app_audio_policy.h
-        src/audio/session_router.cpp
-        src/audio/session_router.h
+        host/windows_main.cpp
+        host/eq_bridge_server.cpp
+        host/eq_bridge_server.h
+        host/route_bridge_protocol.h
+        host/route_bridge_server.cpp
+        host/route_bridge_server.h
+        host/termite_host.cpp
+        host/termite_host.h
+        host/termite.rc
+        sound/wasapi_audio_engine.cpp
+        sound/wasapi_audio_engine.h
+        sound/app_audio_policy.cpp
+        sound/app_audio_policy.h
+        sound/session_router.cpp
+        sound/session_router.h
     )
-    target_link_libraries(termite PRIVATE termite_dsp termite_audio_core ole32 uuid avrt shell32 runtimeobject d2d1 dwrite dwmapi windowscodecs user32 gdi32)
-    if(MSVC)
-        # CMake's Visual Studio generator recognizes /MANIFESTUAC as a generic
-        # boolean and otherwise emits the default asInvoker manifest. Import a
-        # small MSBuild property sheet to set the concrete UAC mode instead.
-        set_target_properties(termite PROPERTIES
-            VS_USER_PROPS "${CMAKE_CURRENT_SOURCE_DIR}/src/app/termite_elevation.props"
-        )
-    endif()
+    target_link_libraries(termite PRIVATE termite_dsp termite_audio_core ole32 uuid avrt shell32 runtimeobject user32 advapi32)
     target_compile_definitions(termite PRIVATE
         UNICODE
         _UNICODE
@@ -76,15 +68,36 @@ if(TERMITE_BUILD_APP)
         WIN32_LEAN_AND_MEAN
         _WIN32_WINNT=0x0A00
     )
-    set_target_properties(termite PROPERTIES OUTPUT_NAME "Termite")
+    # Delphi's standalone launch path and release staging both use build\
+    # directly. Keep the host there for every Visual Studio configuration as
+    # well as single-config generators such as Ninja.
+    set_target_properties(termite PROPERTIES
+        OUTPUT_NAME "Termite"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_BINARY_DIR}"
+    )
 
-    install(TARGETS termite RUNTIME DESTINATION . COMPONENT runtime)
+    # The VCL frontend is intentionally a separate executable so Delphi and
+    # C++ never share an ABI. Its Delphi project lives in ui and emits
+    # directly into the normal build tree.  Copy it beside the host for normal
+    # developer runs whenever it is present. The check happens at build time,
+    # because Delphi may be built after the initial CMake configure step.
+    set(TERMITE_VCL_FRONTEND "${CMAKE_SOURCE_DIR}/build/TermiteUI.exe")
+    add_custom_command(TARGET termite POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_FILE=${TERMITE_VCL_FRONTEND}
+            -DDESTINATION_FILE=$<TARGET_FILE_DIR:termite>/TermiteUI.exe
+            -P ${CMAKE_SOURCE_DIR}/ui/copy_frontend.cmake
+        COMMENT "Copying the VCL Termite frontend when available"
+    )
     if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
         add_custom_command(TARGET termite POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:termite>/assets"
             COMMENT "Copying optional Termite background assets"
         )
-        install(DIRECTORY assets DESTINATION . COMPONENT runtime)
     endif()
 endif()
 
@@ -96,25 +109,19 @@ if(TERMITE_BUILD_TESTS)
 
     add_executable(termite_audio_tests tests/test_audio_pipeline.cpp)
     target_link_libraries(termite_audio_tests PRIVATE termite_audio_core)
-    target_include_directories(termite_audio_tests PRIVATE src)
+    target_include_directories(termite_audio_tests PRIVATE .)
     add_test(NAME termite_audio_tests COMMAND termite_audio_tests)
 
-    add_executable(termite_ui_tests
-        tests/test_console.cpp
-        src/app/console_layout.cpp
-        src/app/console_state.cpp
-        src/app/settings_store.cpp
-    )
-    target_link_libraries(termite_ui_tests PRIVATE termite_dsp shell32)
-    target_include_directories(termite_ui_tests PRIVATE src)
-    add_test(NAME termite_ui_tests COMMAND termite_ui_tests)
-
     if(WIN32)
-        add_test(
-            NAME termite_installer_layout_tests
-            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
-                -File "${CMAKE_SOURCE_DIR}/tests/test_installer_layout.ps1"
-                -root "${CMAKE_SOURCE_DIR}"
+        add_executable(termite_eq_bridge_tests
+            tests/test_eq_bridge.cpp
+            host/eq_bridge_server.cpp
+            host/eq_bridge_server.h
         )
+        target_link_libraries(termite_eq_bridge_tests PRIVATE termite_dsp advapi32 user32)
+        target_include_directories(termite_eq_bridge_tests PRIVATE .)
+        target_compile_definitions(termite_eq_bridge_tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
+        add_test(NAME termite_eq_bridge_tests COMMAND termite_eq_bridge_tests)
     endif()
+
 endif()

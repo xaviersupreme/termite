@@ -1,4 +1,5 @@
-#include "dsp/eq_profile.h"
+#include "sound/eq/eq_profile.h"
+#include "host/eq_bridge_profile.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -48,6 +49,51 @@ int main() {
     const auto bass = termite::eq_profile::preset("bass");
     assert(bass.bands[0].gain_db > 0.0F);
     assert(bass.preamp_db < 0.0F);
+
+    termite::eq_bridge_snapshot_v1 bridge_snapshot;
+    bridge_snapshot.graphic_gains[7] = 12.0F;
+    bridge_snapshot.smoothing = 0.0F;
+    assert(termite::valid_eq_bridge_snapshot(bridge_snapshot));
+    const auto bridged_graphic = termite::profile_from_bridge_snapshot(bridge_snapshot, termite::eq_profile::flat());
+    assert(approximately_equal(bridged_graphic.bands[7].gain_db, 12.0F, 0.01F));
+    bridge_snapshot.smoothing = 100.0F;
+    const auto smoothed_graphic = termite::profile_from_bridge_snapshot(bridge_snapshot, termite::eq_profile::flat());
+    assert(approximately_equal(smoothed_graphic.bands[7].gain_db, 12.0F, 0.01F));
+    assert(smoothed_graphic.bands[7].q < bridged_graphic.bands[7].q);
+
+    bridge_snapshot.mode = static_cast<std::uint8_t>(termite::eq_bridge_mode::arbitrary);
+    bridge_snapshot.marker_count = 3;
+    bridge_snapshot.markers[0] = {termite::arbitrary_min_frequency_hz, 0.0F};
+    bridge_snapshot.markers[1] = {1000.0F, 12.0F};
+    bridge_snapshot.markers[2] = {termite::arbitrary_max_frequency_hz, 0.0F};
+    bridge_snapshot.smoothing = 0.0F;
+    bridge_snapshot.x_axis = static_cast<std::uint8_t>(termite::eq_bridge_x_axis::logarithmic);
+    const auto log_response = termite::bridge_arbitrary_response_db(bridge_snapshot, 200.0F);
+    bridge_snapshot.x_axis = static_cast<std::uint8_t>(termite::eq_bridge_x_axis::linear);
+    const auto linear_response = termite::bridge_arbitrary_response_db(bridge_snapshot, 200.0F);
+    assert(!approximately_equal(log_response, linear_response, 0.01F));
+
+    // Spline is a cardinal curve, not a cosmetic smoothstep.  Tension must
+    // materially change the same marker segment.
+    bridge_snapshot.marker_count = 4;
+    bridge_snapshot.markers[0] = {termite::arbitrary_min_frequency_hz, 0.0F};
+    bridge_snapshot.markers[1] = {500.0F, 12.0F};
+    bridge_snapshot.markers[2] = {2000.0F, -8.0F};
+    bridge_snapshot.markers[3] = {termite::arbitrary_max_frequency_hz, 0.0F};
+    bridge_snapshot.interpolation = static_cast<std::uint8_t>(termite::eq_bridge_interpolation::linear);
+    const auto straight_response = termite::bridge_arbitrary_response_db(bridge_snapshot, 950.0F);
+    bridge_snapshot.interpolation = static_cast<std::uint8_t>(termite::eq_bridge_interpolation::spline);
+    bridge_snapshot.tension = 0.0F;
+    const auto curved_response = termite::bridge_arbitrary_response_db(bridge_snapshot, 950.0F);
+    assert(!approximately_equal(straight_response, curved_response, 0.01F));
+    bridge_snapshot.tension = 1.0F;
+    const auto tight_response = termite::bridge_arbitrary_response_db(bridge_snapshot, 950.0F);
+    assert(!approximately_equal(curved_response, tight_response, 0.01F));
+    bridge_snapshot.tension = 0.0F;
+    const auto bridged_arbitrary = termite::profile_from_bridge_snapshot(bridge_snapshot, termite::eq_profile::flat());
+    assert(bridged_arbitrary.processing_mode == termite::eq_processing_mode::arbitrary);
+    assert(bridged_arbitrary.arbitrary_bands.size() == termite::arbitrary_band_count);
+    assert(termite::profile_response_db(bridged_arbitrary, 48000.0F, 1000.0F) > 2.0F);
 
     auto effects_profile = termite::eq_profile::flat();
     effects_profile.effects.bass_enabled = true;
