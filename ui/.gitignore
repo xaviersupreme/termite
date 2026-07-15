@@ -1,0 +1,10 @@
+*.dcu
+*.exe
+Carbon.res
+*.identcache
+*.local
+*.tvsconfig
+__history/
+__recovery/
+private_assets/
+/public_assets/*

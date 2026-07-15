@@ -1,5 +1,5 @@
-#include "audio/audio_pipeline.h"
-#include "audio/routing_policy.h"
+#include "sound/audio_pipeline.h"
+#include "sound/routing_policy.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
