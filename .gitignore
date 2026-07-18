@@ -1,15 +1,6 @@
 /build/
 /build-*/
-/installer/output/
-/artifacts/
-/.tooling/
-/dist/
-/third_party/vb_cable/*.exe
-/third_party/vb_cable/*.sys
-/third_party/vb_cable/*.cat
-/third_party/vb_cable/*.inf
-/third_party/vb_cable/*.ico
-/third_party/vb_cable/readme.txt
-/third_party/vc_redist/
+/release/
+/reference/
 /.vs/
 *.user

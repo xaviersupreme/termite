@@ -1,56 +1,87 @@
 # Termite
 
-Windows 10/11 tray equalizer for apps routed through VB-CABLE.
+Termite is a Windows equalizer for audio routed through VB-CABLE. It reads
+`CABLE Output`, sends it to the current default playback device, and applies
+one shared EQ profile.
 
-## Users
 
-Download and run `termite_setup.exe`. It includes Termite, the Microsoft Visual C++ runtime, and VB-CABLE. No build tools or developer runtimes are required. If VB-CABLE is missing, its VB-Audio setup window is shown during installation and Termite launches only after Windows exposes both `CABLE Input` and `CABLE Output`.
+What it does
+------------
 
-Restart Windows if the driver setup requests it. If the endpoints are still absent, use **Start Menu → Termite → Install or repair VB-CABLE**, then restart if prompted.
+* 20-band graphic EQ and arbitrary EQ
+* `.tsf` profile files
+* Per-application CABLE routing while an application has an active audio
+  stream
+* VCL styles, including the user’s last selected theme
+* Restores routes changed during a Termite run when the program closes
 
-After installation, choose each app's output as `CABLE Input` once in **Windows Settings → System → Sound → Volume mixer**. This is a Windows setting, not a configuration file.
 
-## Contributors
+Before running it
+-----------------
 
-Run one elevated PowerShell command from the repository root:
+Install [VB-CABLE](https://vb-audio.com/Cable/) yourself. Windows must show
+both `CABLE Input` and `CABLE Output`.
+
+Do not make `CABLE Input` your default playback device. That makes a feedback
+loop. Route an application to it instead, then Termite can pick up its audio
+from `CABLE Output`.
+
+The Route apps list only changes applications that Windows currently exposes
+as audio clients. Start playback first if an application does not respond to a
+route change.
+
+
+Build
+-----
+
+The C++ host uses CMake. From the repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
+cmake -S . -B build
+cmake --build build --target termite --parallel
 ```
 
-It installs missing build tools with WinGet, builds the native Direct2D frontend, runs tests, stages the release dependencies, and creates `artifacts\termite_setup.exe`.
+The frontend is [ui/TermiteUI.dproj](ui/TermiteUI.dproj). Open it in Delphi,
+select **Debug | Win64**, and build it. It writes
+`build\Win64\Debug\TermiteUI.exe`.
 
-The first run needs internet access and administrator approval for Visual Studio Build Tools. The application itself uses only the Windows SDK.
+Build the C++ host once more after Delphi. CMake copies `TermiteUI.exe` next
+to `Termite.exe`. Delphi Community Edition is used here, so the VCL project is
+built from the IDE, not the command line.
 
-For the DSP tests only, no Windows SDK is required:
+To make a release ZIP after both builds are finished, run:
 
 ```powershell
-cmake -S . -B build-core -G Ninja -DTERMITE_BUILD_APP=OFF
-cmake --build build-core
-ctest --test-dir build-core --output-on-failure
+powershell -ExecutionPolicy Bypass -File .\tools\make_release.ps1
 ```
 
-## Use
+Upload `release\Termite-win64.zip` to GitHub. A person installing it extracts
+the ZIP and runs `Install-Termite.ps1`. The script asks whether the app belongs
+in `%LocalAppData%\Programs` or `%ProgramFiles%`. VB-CABLE itself is a driver,
+so Windows will ask for administrator approval when it is first installed.
 
-1. Run `termite_setup.exe`; it installs VB-CABLE visibly when needed and verifies both endpoints. Reboot if prompted.
-2. Start Termite. It captures `CABLE Output` and renders to the current Windows default speakers/headphones.
-3. Select each app's output as `CABLE Input` in **Windows Settings → System → Sound → Volume mixer**.
-4. Adjust the shared 20-band graphic EQ profile. Every app sent to `CABLE Input` receives it.
+Run the tests with:
 
-Termite saves its working profile, console state, window position, and selected-app reminders under `%LOCALAPPDATA%\Termite\settings.json`. Closing the console hides it to the notification area while processing continues; use **Quit** from the tray menu to stop it.
+```powershell
+cmake --build build --target termite_dsp_tests termite_audio_tests termite_eq_bridge_tests --parallel
+ctest --test-dir build --output-on-failure
+```
 
-Use **Hardware** to inspect the active capture/render endpoints, formats, buffer fill, xruns, and recovery reason.
 
-The default playback device must never be `CABLE Input`; that would create an audio feedback loop.
+The files
+---------
 
-## Audio validation
+```
+host/       process lifetime, named-pipe bridges, Windows glue
+sound/      WASAPI, routing policy, equalizer model
+ui/         Delphi VCL frontend
+assets/     Termite-owned artwork
+reference/  local reverse-engineering material; deliberately ignored by Git
+tests/      small tests for the things that should not quietly drift
+```
 
-After installing VB-CABLE, route a browser or media app to `CABLE Input` in Windows Volume Mixer and confirm that only that app is affected. Test a flat profile, a boost and cut, 44.1/48 kHz content, switching the default speakers/headphones while playing, and disabling/re-enabling the cable endpoint. Report the Hardware diagnostics if Termite does not recover.
+License
+-------
 
-## VB-CABLE
-
-VB-CABLE is a separate VB-Audio donationware driver. Its origin and donation page are <https://vb-audio.com/Cable/>. The installer staging instructions and redistribution constraints are in [third_party/vb_cable/README.md](third_party/vb_cable/README.md).
-
-## Licensing
-
-Termite is released under the MIT License. See [LICENSE](LICENSE).
+Termite is MIT licensed; see [LICENSE](LICENSE). VB-CABLE is separate software
+from VB-Audio and has its own terms.
