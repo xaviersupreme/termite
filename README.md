@@ -48,12 +48,7 @@ ctest --test-dir build --output-on-failure
 powershell -ExecutionPolicy Bypass -File .\tools\make_release.ps1
 ```
 
-The ZIP is written to `release\Termite-win64.zip`. To build the Inno Setup
-installer as well:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\build_installer.ps1
-```
+The ZIP is written to `release\Termite-win64.zip`.
 
 ## Layout
 
