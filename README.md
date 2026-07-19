@@ -1,64 +1,39 @@
 # Termite
 
-Termite is a Windows equalizer for audio routed through VB-CABLE. It reads
-`CABLE Output`, sends it to the current default playback device, and applies
-one shared EQ profile.
+Termite is a Windows equalizer for audio sent through VB-CABLE.
 
+It has a 20-band graphic equalizer, an arbitrary equalizer, `.tsf` profiles,
+and per-application routing.
 
-What it does
-------------
+## Running it
 
-* 20-band graphic EQ and arbitrary EQ
-* `.tsf` profile files
-* Per-application CABLE routing while an application has an active audio
-  stream
-* VCL styles, including the user’s last selected theme
-* Restores routes changed during a Termite run when the program closes
+Install [VB-CABLE](https://vb-audio.com/Cable/) first. Windows should show
+`CABLE Input` and `CABLE Output` afterwards.
 
+Start `Termite.exe`, then use **Route apps** to send an application to
+`CABLE Input`. Start playback before opening the route list; Windows only
+lists applications with an active audio session.
 
-Before running it
------------------
+Do not use `CABLE Input` as the default playback device. It will feed the
+cable back into itself.
 
-Install [VB-CABLE](https://vb-audio.com/Cable/) yourself. Windows must show
-both `CABLE Input` and `CABLE Output`.
+## Building
 
-Do not make `CABLE Input` your default playback device. That makes a feedback
-loop. Route an application to it instead, then Termite can pick up its audio
-from `CABLE Output`.
-
-The Route apps list only changes applications that Windows currently exposes
-as audio clients. Start playback first if an application does not respond to a
-route change.
-
-
-Build
------
-
-The C++ host uses CMake. From the repository root:
+Build the host from the repository root:
 
 ```powershell
 cmake -S . -B build
 cmake --build build --target termite --parallel
 ```
 
-The frontend is [ui/TermiteUI.dproj](ui/TermiteUI.dproj). Open it in Delphi,
-select **Debug | Win64**, and build it. It writes
-`build\Win64\Debug\TermiteUI.exe`.
+Open [ui/TermiteUI.dproj](ui/TermiteUI.dproj) in Delphi and build
+**Debug | Win64**. This creates `build\TermiteUI.exe`.
 
-Build the C++ host once more after Delphi. CMake copies `TermiteUI.exe` next
-to `Termite.exe`. Delphi Community Edition is used here, so the VCL project is
-built from the IDE, not the command line.
-
-To make a release ZIP after both builds are finished, run:
+Build the host once more to put the frontend beside it:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\make_release.ps1
+cmake --build build --target termite --parallel
 ```
-
-Upload `release\Termite-win64.zip` to GitHub. A person installing it extracts
-the ZIP and runs `Install-Termite.ps1`. The script asks whether the app belongs
-in `%LocalAppData%\Programs` or `%ProgramFiles%`. VB-CABLE itself is a driver,
-so Windows will ask for administrator approval when it is first installed.
 
 Run the tests with:
 
@@ -67,21 +42,30 @@ cmake --build build --target termite_dsp_tests termite_audio_tests termite_eq_br
 ctest --test-dir build --output-on-failure
 ```
 
+## Packaging
 
-The files
----------
-
-```
-host/       process lifetime, named-pipe bridges, Windows glue
-sound/      WASAPI, routing policy, equalizer model
-ui/         Delphi VCL frontend
-assets/     Termite-owned artwork
-reference/  local reverse-engineering material; deliberately ignored by Git
-tests/      small tests for the things that should not quietly drift
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\make_release.ps1
 ```
 
-License
--------
+The ZIP is written to `release\Termite-win64.zip`. To build the Inno Setup
+installer as well:
 
-Termite is MIT licensed; see [LICENSE](LICENSE). VB-CABLE is separate software
-from VB-Audio and has its own terms.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_installer.ps1
+```
+
+## Layout
+
+```
+host/       C++ process and pipe server
+sound/      WASAPI, routing, and EQ code
+ui/         Delphi frontend
+assets/     icon and artwork
+tests/      native tests
+tools/      release scripts
+```
+
+## License
+
+Termite is MIT licensed. VB-CABLE is separate software from VB-Audio.
