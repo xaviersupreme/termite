@@ -5,6 +5,20 @@ Termite is a Windows equalizer for audio sent through VB-CABLE.
 It has a 20-band graphic equalizer, an arbitrary equalizer, `.tsf` profiles,
 and per-application routing.
 
+## Themes
+
+| Glossy | Cobalt XE Media |
+| --- | --- |
+| <img src="assets/glossy.png" alt="Glossy" width="420"> | <img src="assets/cobalt.png" alt="Cobalt XE Media" width="420"> |
+
+| Aqua Light Slate | Aqua Graphite |
+| --- | --- |
+| <img src="assets/aqua-light.png" alt="Aqua Light Slate" width="420"> | <img src="assets/aqua-graphite.png" alt="Aqua Graphite" width="420"> |
+
+| Amakrits |
+| --- |
+| <img src="assets/amakrits.png" alt="Amakrits" width="420"> |
+
 ## Running it
 
 Install [VB-CABLE](https://vb-audio.com/Cable/) first. Windows should show
