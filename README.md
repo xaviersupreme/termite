@@ -2,7 +2,7 @@
 
 Termite is a Windows equalizer for audio sent through VB-CABLE.
 
-It has a 20-band graphic equalizer, an arbitrary equalizer, `.tsf` profiles,
+It has a 20-band graphic equalizer, an arbitrary equalizer,
 and per-application routing.
 
 ## Themes
