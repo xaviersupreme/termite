@@ -11,7 +11,7 @@ namespace termite {
 
 
 inline constexpr wchar_t route_bridge_pipe_name[] = L"\\\\.\\pipe\\termite.route.v1";
-inline constexpr std::uint32_t route_bridge_magic = 0x5452544DU;
+inline constexpr std::uint32_t route_bridge_magic = 0x5452544DU;  
 inline constexpr std::uint16_t route_bridge_version = 1;
 inline constexpr std::size_t route_bridge_max_apps = 48;
 inline constexpr std::size_t route_bridge_path_chars = 520;
@@ -70,4 +70,4 @@ inline bool valid_route_bridge_request(const route_bridge_request_v1& request) n
 static_assert(std::is_trivially_copyable_v<route_bridge_request_v1>);
 static_assert(std::is_trivially_copyable_v<route_bridge_response_v1>);
 
-}  // namespace termite
+}  

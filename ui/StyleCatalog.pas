@@ -7,9 +7,9 @@ uses
 
 const
   ReferenceThemeCount = 14;
-
-
-
+  
+  
+  
   ReferenceThemeCaptions: array[0..ReferenceThemeCount - 1] of string = (
     'Glossy',
     'Amakrits',
@@ -150,7 +150,7 @@ begin
     if Registry.OpenKey(ThemeRegistryKey, True) then
       Registry.WriteInteger(ThemeRegistryValue, AIndex);
   except
-
+    
   end;
   Registry.Free;
 end;
@@ -161,9 +161,9 @@ begin
   if not ReferenceThemeIsAvailable(AIndex) then
     Exit;
   try
-
-
-
+    
+    
+    
     TStream(ReferenceStyleHandles[AIndex]).Position := 0;
     TStyleManager.SetStyle(ReferenceStyleHandles[AIndex]);
     Result := TStyleManager.IsCustomStyleActive;

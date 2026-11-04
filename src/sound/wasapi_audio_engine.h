@@ -56,6 +56,8 @@ public:
     bool start();
     void stop();
     void set_profile(const eq_profile& profile);
+    void set_capture_targets(const std::vector<unsigned long>& targets);
+    [[nodiscard]] std::vector<unsigned long> capture_targets() const;
     [[nodiscard]] bool is_running() const noexcept;
     [[nodiscard]] std::string status_text() const;
     [[nodiscard]] audio_diagnostics diagnostics() const;
@@ -76,6 +78,7 @@ private:
 
     std::atomic<bool> stop_requested_{false};
     std::atomic<bool> running_{false};
+    std::atomic<bool> capture_targets_dirty_{false};
     std::atomic<void*> stop_event_{nullptr};
     std::atomic<void*> recovery_event_{nullptr};
     std::atomic<std::uint64_t> capture_overflows_{};
@@ -124,8 +127,12 @@ private:
 
     std::thread audio_thread_;
     mutable std::mutex status_mutex_;
+    bool has_last_profile_{false};
+    eq_profile last_profile_{};
+    mutable std::mutex capture_targets_mutex_;
+    std::vector<unsigned long> capture_targets_;
     std::string status_text_{"Stopped"};
     audio_diagnostics diagnostics_{};
 };
 
-}  // namespace termite
+}  

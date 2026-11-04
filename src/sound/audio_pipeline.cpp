@@ -68,7 +68,7 @@ float linear_to_db(float value) noexcept {
     return 20.0F * std::log10(std::max(value, 0.0000001F));
 }
 
-}  // namespace
+}  
 
 std::size_t audio_format::bytes_per_sample() const noexcept {
     switch (encoding) {
@@ -481,4 +481,4 @@ endpoint_negotiation negotiate_endpoints(audio_format capture_format,
     return result;
 }
 
-}  // namespace termite
+}  

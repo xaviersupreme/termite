@@ -36,4 +36,4 @@ private:
     std::optional<eq_bridge_snapshot_v1> latest_;
 };
 
-}  // namespace termite
+}  

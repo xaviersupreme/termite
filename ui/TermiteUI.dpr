@@ -29,8 +29,8 @@ end;
 
 function RunningHostIsAvailable: Boolean;
 begin
-
-
+  
+  
   Result := WaitNamedPipe('\\.\pipe\termite.eq.v1', 100);
 end;
 
@@ -51,9 +51,9 @@ var
   InitialThemeIndex: Integer;
 
 begin
-
-
-
+  
+  
+  
   if not StartedByTermiteHost then
   begin
     if RunningHostIsAvailable then
@@ -65,8 +65,8 @@ begin
     if LaunchHostForStandaloneFrontend then
       Halt(0);
   end;
-
-
+  
+  
   TStyleManager.AutoDiscoverStyleResources := False;
   Application.Initialize;
   Application.MainFormOnTaskbar := True;

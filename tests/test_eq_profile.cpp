@@ -16,7 +16,7 @@ bool approximately_equal(float left, float right, float tolerance = 0.15F) {
     return std::abs(left - right) <= tolerance;
 }
 
-}  // namespace
+}  
 
 int main() {
     const auto flat = termite::eq_profile::flat();
@@ -73,8 +73,8 @@ int main() {
     const auto linear_response = termite::bridge_arbitrary_response_db(bridge_snapshot, 200.0F);
     assert(!approximately_equal(log_response, linear_response, 0.01F));
 
-
-
+    
+    
     bridge_snapshot.marker_count = 4;
     bridge_snapshot.markers[0] = {termite::arbitrary_min_frequency_hz, 0.0F};
     bridge_snapshot.markers[1] = {500.0F, 12.0F};

@@ -51,7 +51,7 @@ begin
   FInfo.AutoSize := False;
   FInfo.WordWrap := True;
   FInfo.SetBounds(14, 12, ClientWidth - 28, 44);
-  FInfo.Caption := 'A check means the app has a CABLE preference. The status shows its live stream. Restart playback after routing or returning an app.';
+  FInfo.Caption := 'Checked means Termite is processing that app.';
 
   FAppList := TCheckListBox.Create(Self);
   FAppList.Parent := Self;
@@ -80,8 +80,7 @@ procedure TRouteAppsDialog.LoadApps(const Prefix: string);
 var
   I, Count: Integer;
   App: TTermiteRouteApp;
-  Name, StateText, MessageText: string;
-  LiveOnCable: Boolean;
+  Name, MessageText: string;
 begin
   FUpdating := True;
   try
@@ -101,16 +100,8 @@ begin
         Name := TermiteRouteAppName(App);
         if Name = '' then
           Name := TermiteRouteAppPath(App);
-        LiveOnCable := App.Reserved[0] <> 0;
-        if LiveOnCable then
-          StateText := 'CABLE Input'
-        else if App.ActiveSessionCount <> 0 then
-          StateText := 'Windows output'
-        else
-          StateText := 'no active stream';
 
-
-        FAppList.Items.Add(Format('%s  -  %s', [Name, StateText]));
+        FAppList.Items.Add(Name);
         FAppList.Checked[I] := App.RoutedToCable <> 0;
       end;
     finally

@@ -180,4 +180,4 @@ struct endpoint_negotiation {
                                                         audio_format render_format,
                                                         bool render_is_cable) noexcept;
 
-}  // namespace termite
+}  

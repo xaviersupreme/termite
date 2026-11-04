@@ -169,9 +169,9 @@ std::optional<std::wstring> policy_endpoint_id(IMMDevice& device, std::wstring& 
     }
     std::wstring id{raw_id};
     CoTaskMemFree(raw_id);
-
-
-
+    
+    
+    
     return std::format(L"\\\\?\\SWD#MMDEVAPI#{}#{{e6327cad-dcec-4949-ae8a-991e976a79d2}}", id);
 }
 
@@ -289,7 +289,7 @@ bool set_all_render_roles(audio_policy_config_factory& factory,
            set_endpoint_preference(factory, process_id, eMultimedia, multimedia_endpoint, diagnostic);
 }
 
-}  // namespace
+}  
 
 bool app_audio_policy::route_executable_to_cable(const std::wstring& executable_path,
                                                   app_audio_route_snapshot& previous_route,
@@ -309,9 +309,9 @@ bool app_audio_policy::route_executable_to_cable(const std::wstring& executable_
     for (const auto process_id : processes) {
         const auto console = get_endpoint_preference(*factory, process_id, eConsole);
         const auto multimedia = get_endpoint_preference(*factory, process_id, eMultimedia);
-
-
-
+        
+        
+        
         if ((console.assigned && paths_match(console.endpoint_id, *cable_endpoint)) ||
             (multimedia.assigned && paths_match(multimedia.endpoint_id, *cable_endpoint))) {
             previous_route.processes.clear();
@@ -334,9 +334,9 @@ bool app_audio_policy::restore_executable_route(const app_audio_route_snapshot& 
             process_ids.insert(process.process_id);
         }
     }
-
-
-
+    
+    
+    
     for (const auto process_id : active_audio_processes_for_executable(previous_route.executable_path)) {
         process_ids.insert(process_id);
     }
@@ -348,10 +348,10 @@ bool app_audio_policy::restore_executable_route(const app_audio_route_snapshot& 
     const auto factory = open_policy_factory(diagnostic);
     if (factory == nullptr) return false;
 
-
-
-
-
+    
+    
+    
+    
     const auto default_console = default_render_endpoint_id(eConsole, diagnostic);
     if (!default_console.has_value()) return false;
     const auto default_multimedia = default_render_endpoint_id(eMultimedia, diagnostic);
@@ -411,4 +411,4 @@ bool app_audio_policy::is_executable_routed_to_cable(const std::wstring& executa
     return false;
 }
 
-}  // namespace termite
+}  

@@ -51,8 +51,8 @@ type
     FontHeight: Integer;
   end;
 
-
-
+  
+  
   TControlAccess = class(TControl)
   public
     property Font;
@@ -91,7 +91,7 @@ type
     FArbitraryEnabled: TCheckBox;
     FArbitraryFilters: TList<TArbitraryFilter>;
     FArbitraryUpdating: Boolean;
-
+    
     FProfileLoading: Boolean;
     FArbitraryCursorFrequency: TEdit;
     FArbitraryCursorGain: TEdit;
@@ -205,15 +205,15 @@ uses
 const
   BaseClientWidth = 1139;
   BaseClientHeight = 622;
-
-
-
+  
+  
+  
   DefaultClientWidth = 1139;
   DefaultClientHeight = 622;
   LeftPaneWidth = 273;
-
-
-
+  
+  
+  
   ArbitraryMinimumFrequency = 40.0;
   ArbitraryMaximumFrequency = 18000.0;
   Frequencies: array[0..19] of string = ('40', '55', '75', '103', '141',
@@ -472,8 +472,8 @@ end;
 procedure TVSoundRemakeForm.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
-
-
+  
+  
   Params.ExStyle := (Params.ExStyle or WS_EX_APPWINDOW) and not WS_EX_TOOLWINDOW;
 end;
 
@@ -490,9 +490,9 @@ var
 begin
   if not HandleAllocated then
     Exit;
-
-
-
+  
+  
+  
   DarkMode := True;
   CornerPreference := DWMWCP_ROUND;
   BorderColor := RGB(32, 32, 32);
@@ -604,12 +604,12 @@ begin
   DoubleBuffered := True;
   ClientWidth := BaseClientWidth;
   ClientHeight := BaseClientHeight;
-
-
+  
+  
   Color := RGB(32, 32, 32);
   Font.Name := 'Tahoma';
-
-
+  
+  
   Font.Height := -11;
   FBaseFormFontHeight := Font.Height;
   FLayoutScaleX := 1;
@@ -619,7 +619,7 @@ begin
   FEqualizerOn := True;
   FInputGain := 0;
   FWetMix := 100;
-
+  
   FSmoothing := 50;
   FActiveThemeIndex := ActiveReferenceThemeIndex;
   FArbitraryFilters := TList<TArbitraryFilter>.Create;
@@ -650,9 +650,9 @@ begin
   FArbitraryModeButton.Tag := 1;
 
   FGraphicPage := TPanel.Create(Self);
-
-
-
+  
+  
+  
   FGraphicPage.Parent := Self;
   FGraphicPage.DoubleBuffered := True;
   FGraphicPage.BevelOuter := bvNone;
@@ -675,8 +675,8 @@ begin
   CreateArbitraryPage(FArbitraryPage);
 
   EqModeClick(FGraphicModeButton);
-
-
+  
+  
   FGraphicModeButton.Default := True;
   FArbitraryModeButton.Default := False;
   ApplyThemeColors;
@@ -806,9 +806,9 @@ begin
   FStatusLog.Lines.Add('Termite owns audio processing.');
 
   ControlPanel := TPanel.Create(Self);
-
-
-
+  
+  
+  
   ControlPanel.Parent := Self;
   ControlPanel.SetBounds(12, 230, 249, 103);
   ControlPanel.BevelOuter := bvLowered;
@@ -946,8 +946,8 @@ var
 begin
   FArbitraryChart := TBufferedChart.Create(Self);
   FArbitraryChart.Parent := APage;
-
-
+  
+  
   FArbitraryChart.SetBounds(50, 0, 802, 402);
   FArbitraryChart.Color := clBlack;
   FArbitraryChart.ParentColor := False;
@@ -1075,8 +1075,8 @@ begin
   FArbitrarySquares.SetBounds(8, 48, 76, 17);
   FArbitrarySquares.OnClick := ArbitraryOptionsChanged;
 
-
-
+  
+  
   ControlBox := NewGroup(Self, APage, ' Termite EQ: ', 531, 481, 219, 90);
   NewButton(Self, ControlBox, 'Open profile', 12, 22, 95, 25, ucOpenProfile, ButtonClick).Font.Style := [fsBold];
   NewButton(Self, ControlBox, 'Save profile', 113, 22, 95, 25, ucSaveProfile, ButtonClick);
@@ -1187,9 +1187,9 @@ procedure TVSoundRemakeForm.SeedArbitraryEndpoints(const GainDb: Double);
 var
   Filter: TArbitraryFilter;
 begin
-
-
-
+  
+  
+  
   FArbitraryFilters.Clear;
   Filter.Kind := afPeak;
   Filter.GainDb := ClampDouble(GainDb, -40, 40);
@@ -1282,9 +1282,9 @@ begin
     Ratio := 0
   else if FArbitrarySpline.Checked then
   begin
-
-
-
+    
+    
+    
     Tension := FArbitraryTension.Position / 100;
     PreviousGain := FArbitraryFilters[Max(0, LeftPoint - 1)].GainDb;
     NextGain := FArbitraryFilters[Min(FArbitraryFilters.Count - 1,
@@ -1362,8 +1362,8 @@ begin
     else
       FrequencyHz := ArbitraryMinimumFrequency +
         (ArbitraryMaximumFrequency - ArbitraryMinimumFrequency) * I / 9;
-
-
+    
+    
     if FrequencyHz >= 1000 then
       FArbitraryXLabels[I].Caption :=
         FormatFloat('0.#', FrequencyHz / 1000, Settings) + 'k'
@@ -1504,8 +1504,8 @@ begin
 
   if Button = mbRight then
   begin
-
-
+    
+    
     if (Nearest > 0) and (Nearest < FArbitraryFilters.Count - 1) then
     begin
       FArbitraryFilters.Delete(Nearest);
@@ -1584,8 +1584,8 @@ begin
     Filter.GainDb := ArbitraryGainForY(Y);
     FArbitraryFilters[FArbitraryDragIndex] := Filter;
     SortArbitraryFilters;
-
-
+    
+    
     for I := 1 to FArbitraryFilters.Count - 2 do
       if (Abs(FArbitraryFilters[I].FrequencyHz - Filter.FrequencyHz) < 0.001) and
         (Abs(FArbitraryFilters[I].GainDb - Filter.GainDb) < 0.001) then
@@ -1681,7 +1681,7 @@ begin
     ucHelp: AddStatus('The VCL frontend sends EQ changes to the local Termite audio host.');
     ucHelpAbout: AddStatus('Termite is a local audio host. The VCL window controls its EQ engine.');
     ucHelpProfiles: AddStatus('Profiles are .tsf files. Open restores an EQ; Save writes the current EQ.');
-    ucHelpRouting: AddStatus('Route apps sends an active app to CABLE Input. Untick it to restore its output.');
+    ucHelpRouting: AddStatus('Route apps picks apps for Termite to process. Untick to restore.');
     ucMixUp: FWetMix := Min(100, FWetMix + 5);
     ucMixDown: FWetMix := Max(0, FWetMix - 5);
     ucVolumeUp: FInputGain := Min(20, FInputGain + 1);
@@ -1713,9 +1713,9 @@ begin
   RefreshControls;
   RefreshChart;
   QueueEngineSync;
-
-
-
+  
+  
+  
   if Sender is TButton then
     ActiveControl := nil;
 end;
@@ -1758,8 +1758,8 @@ begin
 
     Root := TJSONObject.Create;
     try
-
-
+      
+      
       Root.AddPair('format', 'termite-eq-profile');
       Root.AddPair('version', TJSONNumber.Create(2));
       Profile := TJSONObject.Create;
@@ -1939,9 +1939,9 @@ begin
         Mode := 'graphic';
       end;
 
-
-
-
+      
+      
+      
       FGraphicPage.Visible := not SameText(Mode, 'arbitrary');
       FArbitraryPage.Visible := not FGraphicPage.Visible;
       FGraphicModeButton.Font.Style := [];
@@ -1952,8 +1952,8 @@ begin
         FGraphicModeButton.Font.Style := [fsBold]
       else
         FArbitraryModeButton.Font.Style := [fsBold];
-
-
+      
+      
       RefreshControls;
       Loaded := True;
     except
@@ -1986,8 +1986,8 @@ end;
 
 procedure TVSoundRemakeForm.PresetChange(Sender: TObject);
 const
-
-
+  
+  
   PresetSmoothing: array[0..6] of Integer = (78, 78, 62, 46, 44, 58, 68);
 var
   I: Integer;
@@ -2049,8 +2049,8 @@ end;
 
 procedure TVSoundRemakeForm.GraphicOptionsChanged(Sender: TObject);
 begin
-
-
+  
+  
   if Assigned(FChart) then
     FChart.Repaint;
 end;
@@ -2143,8 +2143,8 @@ end;
 procedure TVSoundRemakeForm.ThemeClick(Sender: TObject);
 begin
   if Sender is TMenuItem then
-
-
+    
+    
     PostMessage(Handle, WM_APP + 71, WPARAM(TMenuItem(Sender).Tag), 0);
 end;
 
@@ -2163,8 +2163,8 @@ begin
     for I := Low(FThemeItems) to High(FThemeItems) do
       FThemeItems[I].Checked := I = FActiveThemeIndex;
     AddStatus('Theme selected: ' + ReferenceThemeCaptions[ThemeIndex]);
-
-
+    
+    
     PostMessage(Handle, WM_APP + 72, 0, 0);
   end;
   if ThemeIndex <> FActiveThemeIndex then
@@ -2215,8 +2215,8 @@ var
 begin
   if not Assigned(FStatusLog) then
     Exit;
-
-
+  
+  
   if StyleServices.Enabled then
   begin
     Background := StyleServices.GetSystemColor(clWindow);
@@ -2229,8 +2229,8 @@ begin
   end;
   FStatusLog.Color := Background;
   FStatusLog.Font.Color := Foreground;
-
-
+  
+  
   FStatusLog.SelectAll;
   FStatusLog.SelAttributes.Color := Foreground;
   FStatusLog.SelStart := Length(FStatusLog.Text);
@@ -2239,8 +2239,8 @@ end;
 
 function TVSoundRemakeForm.GraphicSmoothingQ: Double;
 begin
-
-
+  
+  
   Result := 8.0 - 7.0 * ClampDouble(FSmoothing / 100, 0, 1);
 end;
 
@@ -2254,9 +2254,9 @@ var
   DenominatorReal, DenominatorImaginary, Numerator, Magnitude: Double;
 begin
   Result := 0;
-
-
-
+  
+  
+  
   ResponseOmega := 2 * Pi * ClampDouble(FrequencyHz, 20, 21600) / 48000;
   for I := Low(FFaders) to High(FFaders) do
   begin
@@ -2304,15 +2304,15 @@ begin
   Plot := Rect(ScaleX(46), ScaleY(25), R.Right - ScaleX(10),
     R.Bottom - ScaleY(27));
   Canvas.Brush.Style := bsClear;
-
-
+  
+  
   Canvas.Pen.Color := RGB(153, 171, 176);
   Canvas.Rectangle(Plot);
   if Assigned(FGraphicShowGrid) and FGraphicShowGrid.Checked then
   begin
     Canvas.Pen.Color := RGB(54, 68, 72);
-
-
+    
+    
     for I := Low(FFaders) to High(FFaders) do
     begin
       X := FFaders[I].Left + FFaders[I].Width div 2;
@@ -2340,8 +2340,8 @@ begin
     Y := Plot.Top + Round((20 - ResponseDb) * Plot.Height / 40);
     Points[I] := Point(X, Y);
   end;
-
-
+  
+  
   Canvas.Pen.Color := RGB(11, 82, 60);
   Canvas.Pen.Width := 5;
   Canvas.Polyline(Points);
@@ -2381,8 +2381,8 @@ end;
 procedure TVSoundRemakeForm.DrawArbitraryChart(ACanvas: TCanvas;
   const AClientRect: TRect);
 const
-
-
+  
+  
   SampleCount = 1601;
 var
   Canvas: TCanvas;
@@ -2398,9 +2398,9 @@ begin
   SortArbitraryFilters;
   Plot := ArbitraryPlotRect;
   Canvas.Brush.Style := bsClear;
-
-
-
+  
+  
+  
   Canvas.Pen.Color := RGB(80, 97, 102);
   Canvas.Rectangle(Plot);
   if FArbitraryShowGrid.Checked then

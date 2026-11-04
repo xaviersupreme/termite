@@ -19,7 +19,7 @@ float interpolation_coordinate(float frequency_hz, eq_bridge_x_axis axis) noexce
     return axis == eq_bridge_x_axis::logarithmic ? std::log(frequency) : frequency;
 }
 
-}  // namespace
+}  
 
 bool valid_eq_bridge_snapshot(const eq_bridge_snapshot_v1& snapshot) noexcept {
     if (snapshot.magic != eq_bridge_magic || snapshot.version != eq_bridge_version || snapshot.bytes != sizeof(snapshot)) return false;
@@ -66,9 +66,9 @@ float bridge_arbitrary_response_db(const eq_bridge_snapshot_v1& snapshot, float 
         if (interpolation == eq_bridge_interpolation::step) {
             amount = 0.0F;
         } else if (interpolation == eq_bridge_interpolation::spline) {
-
-
-
+            
+            
+            
             const auto left_gain = markers[right - 1].gain_db;
             const auto right_gain = markers[right].gain_db;
             const auto previous_gain = markers[right >= 2 ? right - 2 : right - 1].gain_db;
@@ -95,10 +95,10 @@ eq_profile profile_from_bridge_snapshot(const eq_bridge_snapshot_v1& snapshot, c
 
     if (static_cast<eq_bridge_mode>(snapshot.mode) == eq_bridge_mode::graphic) {
         profile.processing_mode = eq_processing_mode::graphic;
-
-
-
-
+        
+        
+        
+        
         const auto smoothing = finite_clamp(snapshot.smoothing, 0.0F, 100.0F) / 100.0F;
         const auto q = 8.0F - 7.0F * smoothing;
         for (std::size_t index = 0; index < graphic_band_count; ++index) {
@@ -106,10 +106,10 @@ eq_profile profile_from_bridge_snapshot(const eq_bridge_snapshot_v1& snapshot, c
                                     finite_clamp(snapshot.graphic_gains[index], -20.0F, 20.0F), q, true};
         }
     } else {
-
-
-
-
+        
+        
+        
+        
         profile = eq_profile::flat();
         profile.processing_mode = eq_processing_mode::arbitrary;
         profile.enabled = snapshot.equalizer_enabled != 0;
@@ -130,4 +130,4 @@ eq_profile profile_from_bridge_snapshot(const eq_bridge_snapshot_v1& snapshot, c
     return profile;
 }
 
-}  // namespace termite
+}  

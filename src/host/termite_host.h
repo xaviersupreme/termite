@@ -48,4 +48,4 @@ private:
     std::vector<app_audio_route_snapshot> automatic_routes_;
 };
 
-}  // namespace termite
+}  

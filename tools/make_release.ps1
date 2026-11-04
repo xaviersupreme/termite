@@ -47,8 +47,6 @@ if (Test-Path -LiteralPath $assets -PathType Container) {
     Copy-Item -LiteralPath $assets -Destination (Join-Path $payload 'assets') -Recurse
 }
 
-# VCL styles are compiled into TermiteUI.  Do not redistribute their source
-# .vsf files as loose files in the release archive.
 $standaloneStyles = Get-ChildItem -LiteralPath $payload -Filter '*.vsf' -File -Recurse
 if ($standaloneStyles) {
     throw 'Release payload contains standalone .vsf theme files.'

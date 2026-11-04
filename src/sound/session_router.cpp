@@ -90,7 +90,7 @@ BOOL CALLBACK collect_open_app(HWND window, LPARAM parameter) {
     return TRUE;
 }
 
-}  // namespace
+}  
 
 std::vector<audio_session_info> session_router::active_sessions() const {
     std::vector<audio_session_info> sessions;
@@ -155,10 +155,14 @@ std::vector<routing_candidate> session_router::open_apps() const {
         if (found == enumeration.grouped.end()) continue;
         ++found->second.active_session_count;
         found->second.routed_to_cable = found->second.routed_to_cable || session.routed_to_cable;
+        if (std::find(found->second.process_ids.begin(), found->second.process_ids.end(), session.process_id) == found->second.process_ids.end()) {
+            found->second.process_ids.push_back(session.process_id);
+        }
+        if (found->second.process_id == 0) found->second.process_id = session.process_id;
     }
-
-
-
+    
+    
+    
     const app_audio_policy policy;
     for (auto& [_, candidate] : enumeration.grouped) {
         candidate.saved_route_to_cable =
@@ -181,19 +185,120 @@ bool session_router::route_to_cable(const audio_session_info&, std::wstring& fai
     return false;
 }
 
+namespace {
+float get_process_volume(unsigned long process_id) {
+    float result = 1.0F;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    IMMDeviceEnumerator* raw_enumerator = nullptr;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&raw_enumerator)))) {
+        const auto enumerator = adopt_com(raw_enumerator);
+        IMMDevice* raw_device = nullptr;
+        if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &raw_device))) {
+            const auto device = adopt_com(raw_device);
+            IAudioSessionManager2* raw_manager = nullptr;
+            if (SUCCEEDED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(&raw_manager)))) {
+                const auto manager = adopt_com(raw_manager);
+                IAudioSessionEnumerator* raw_sessions = nullptr;
+                if (SUCCEEDED(manager->GetSessionEnumerator(&raw_sessions))) {
+                    const auto session_list = adopt_com(raw_sessions);
+                    int count = 0;
+                    session_list->GetCount(&count);
+                    for (int index = 0; index < count; ++index) {
+                        IAudioSessionControl* raw_control = nullptr;
+                        if (FAILED(session_list->GetSession(index, &raw_control))) continue;
+                        const auto control = adopt_com(raw_control);
+                        IAudioSessionControl2* raw_control2 = nullptr;
+                        if (FAILED(control->QueryInterface(IID_PPV_ARGS(&raw_control2)))) continue;
+                        const auto control2 = adopt_com(raw_control2);
+                        DWORD session_process = 0;
+                        if (FAILED(control2->GetProcessId(&session_process)) || session_process != process_id) continue;
+                        ISimpleAudioVolume* raw_volume = nullptr;
+                        if (SUCCEEDED(control->QueryInterface(IID_PPV_ARGS(&raw_volume)))) {
+                            const auto volume = adopt_com(raw_volume);
+                            float current = 1.0F;
+                            if (SUCCEEDED(volume->GetMasterVolume(&current))) result = current;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    CoUninitialize();
+    return result;
+}
+
+void set_process_volume(unsigned long process_id, float volume) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    IMMDeviceEnumerator* raw_enumerator = nullptr;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&raw_enumerator)))) {
+        const auto enumerator = adopt_com(raw_enumerator);
+        IMMDevice* raw_device = nullptr;
+        if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &raw_device))) {
+            const auto device = adopt_com(raw_device);
+            IAudioSessionManager2* raw_manager = nullptr;
+            if (SUCCEEDED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(&raw_manager)))) {
+                const auto manager = adopt_com(raw_manager);
+                IAudioSessionEnumerator* raw_sessions = nullptr;
+                if (SUCCEEDED(manager->GetSessionEnumerator(&raw_sessions))) {
+                    const auto session_list = adopt_com(raw_sessions);
+                    int count = 0;
+                    session_list->GetCount(&count);
+                    for (int index = 0; index < count; ++index) {
+                        IAudioSessionControl* raw_control = nullptr;
+                        if (FAILED(session_list->GetSession(index, &raw_control))) continue;
+                        const auto control = adopt_com(raw_control);
+                        IAudioSessionControl2* raw_control2 = nullptr;
+                        if (FAILED(control->QueryInterface(IID_PPV_ARGS(&raw_control2)))) continue;
+                        const auto control2 = adopt_com(raw_control2);
+                        DWORD session_process = 0;
+                        if (FAILED(control2->GetProcessId(&session_process)) || session_process != process_id) continue;
+                        ISimpleAudioVolume* raw_volume = nullptr;
+                        if (SUCCEEDED(control->QueryInterface(IID_PPV_ARGS(&raw_volume)))) {
+                            const auto volume_interface = adopt_com(raw_volume);
+                            static_cast<void>(volume_interface->SetMasterVolume(volume, nullptr));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    CoUninitialize();
+}
+}  
+
 bool session_router::route_to_cable(const routing_candidate& candidate,
                                     app_audio_route_snapshot& previous_route,
                                     std::wstring& diagnostic) const {
-    return app_audio_policy{}.route_executable_to_cable(candidate.executable_path, previous_route, diagnostic);
+    std::vector<unsigned long> process_ids = candidate.process_ids;
+    if (process_ids.empty() && candidate.process_id != 0) process_ids.push_back(candidate.process_id);
+    if (process_ids.empty()) {
+        diagnostic = L"That app has no active audio session yet. Start playback, then try again.";
+        return false;
+    }
+    previous_route.executable_path = candidate.executable_path;
+    previous_route.processes.clear();
+    for (unsigned long process_id : process_ids) {
+        app_audio_process_route_snapshot snapshot;
+        snapshot.process_id = process_id;
+        snapshot.previous_volume = get_process_volume(process_id);
+        previous_route.processes.push_back(snapshot);
+        set_process_volume(process_id, 0.01F);
+    }
+    diagnostic = L"Termite is processing this app on the default output.";
+    return true;
 }
 
 bool session_router::restore_route(const app_audio_route_snapshot& previous_route,
                                    std::wstring& diagnostic) const {
-    return app_audio_policy{}.restore_executable_route(previous_route, diagnostic);
+    for (const auto& process : previous_route.processes) {
+        set_process_volume(process.process_id, process.previous_volume > 0.0F ? process.previous_volume : 1.0F);
+    }
+    diagnostic = L"Restored the original audio route.";
+    return true;
 }
 
 void session_router::open_manual_routing_settings() {
     ShellExecuteW(nullptr, L"open", L"ms-settings:apps-volume", nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-}  // namespace termite
+}  

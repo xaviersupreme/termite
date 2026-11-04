@@ -45,13 +45,13 @@ struct tone_effects {
     bool bass_enabled{};
     float bass_db{};
     bool loudness_enabled{};
-    float loudness_amount{};
+    float loudness_amount{};  
     bool clarity_enabled{};
     float clarity_db{};
     bool stereo_enabled{};
-    float stereo_width{1.0F};
+    float stereo_width{1.0F}; 
     bool mono{};
-    float balance{};
+    float balance{};          
 };
 
 enum class eq_processing_mode {
@@ -145,4 +145,4 @@ private:
     float right_balance_{1.0F};
 };
 
-}  // namespace termite
+}  

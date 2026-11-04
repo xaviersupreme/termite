@@ -13,6 +13,7 @@ struct app_audio_process_route_snapshot {
     std::wstring multimedia_endpoint_id;
     bool had_console_endpoint{};
     bool had_multimedia_endpoint{};
+    float previous_volume{1.0F};
 };
 
 
@@ -25,10 +26,10 @@ struct app_audio_route_snapshot {
 
 class app_audio_policy {
 public:
-
-
-
-
+    
+    
+    
+    
     [[nodiscard]] bool route_executable_to_cable(const std::wstring& executable_path,
                                                  app_audio_route_snapshot& previous_route,
                                                  std::wstring& diagnostic) const;
@@ -37,4 +38,4 @@ public:
     [[nodiscard]] bool is_executable_routed_to_cable(const std::wstring& executable_path) const;
 };
 
-}  // namespace termite
+}  

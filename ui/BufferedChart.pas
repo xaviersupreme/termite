@@ -13,10 +13,10 @@ type
   TChartRenderEvent = procedure(ACanvas: TCanvas;
     const AClientRect: TRect) of object;
 
-
-
-
-
+  
+  
+  
+  
   TBufferedChart = class(TCustomControl)
   private
     FBuffer: Vcl.Graphics.TBitmap;
@@ -45,8 +45,8 @@ constructor TBufferedChart.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle + [csOpaque];
-
-
+  
+  
   StyleElements := [];
   DoubleBuffered := True;
   ParentDoubleBuffered := False;
@@ -63,8 +63,8 @@ end;
 
 procedure TBufferedChart.WMEraseBkgnd(var Message: TWMEraseBkgnd);
 begin
-
-
+  
+  
   Message.Result := 1;
 end;
 

@@ -26,4 +26,4 @@ struct open_app_metadata {
 [[nodiscard]] std::wstring normalized_executable_key(const std::wstring& executable_path);
 [[nodiscard]] std::wstring executable_display_name(const std::wstring& executable_path);
 
-}  // namespace termite
+}  

@@ -19,9 +19,11 @@ struct routing_candidate {
     std::wstring display_name;
     std::size_t open_window_count{};
     std::size_t active_session_count{};
-
-
-
+    unsigned long process_id{};
+    std::vector<unsigned long> process_ids;
+    
+    
+    
     bool routed_to_cable{};
     bool saved_route_to_cable{};
 };
@@ -30,8 +32,8 @@ class session_router {
 public:
     [[nodiscard]] std::vector<audio_session_info> active_sessions() const;
     [[nodiscard]] std::vector<routing_candidate> open_apps() const;
-
-
+    
+    
     [[nodiscard]] std::vector<routing_candidate> eligible_sessions() const;
     [[nodiscard]] bool route_to_cable(const audio_session_info& session, std::wstring& failure_reason) const;
     [[nodiscard]] bool route_to_cable(const routing_candidate& candidate,
@@ -42,4 +44,4 @@ public:
     static void open_manual_routing_settings();
 };
 
-}  // namespace termite
+}  

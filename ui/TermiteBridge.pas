@@ -9,12 +9,12 @@ uses
 
 const
   TermiteBridgePipe = '\\.\pipe\termite.eq.v1';
-  TermiteBridgeMagic = Cardinal($5145544D);
+  TermiteBridgeMagic = Cardinal($5145544D); 
   TermiteBridgeVersion = Word(1);
   TermiteBridgeGraphicBands = 20;
   TermiteBridgeMaxMarkers = 32;
   TermiteRouteBridgePipe = '\\.\pipe\termite.route.v1';
-  TermiteRouteBridgeMagic = Cardinal($5452544D);
+  TermiteRouteBridgeMagic = Cardinal($5452544D); 
   TermiteRouteBridgeVersion = Word(1);
   TermiteRouteBridgeMaxApps = 48;
   TermiteRouteBridgePathChars = 520;
@@ -31,9 +31,9 @@ type
     GainDb: Single;
   end;
 
-
-
-
+  
+  
+  
   TTermiteEqSnapshot = packed record
     Magic: Cardinal;
     Version: Word;
@@ -55,8 +55,8 @@ type
 
   TTermiteRouteCommand = (trcListApps = 0, trcSetRoute = 1);
 
-
-
+  
+  
   TTermiteRouteRequest = packed record
     Magic: Cardinal;
     Version: Word;
@@ -88,10 +88,10 @@ type
     Apps: array[0..TermiteRouteBridgeMaxApps - 1] of TTermiteRouteApp;
   end;
 
-
-
-
-
+  
+  
+  
+  
   TTermiteBridgeClient = class
   private
     FLock: TObject;
@@ -135,8 +135,8 @@ begin
   try
     TTermiteBridgeClient(Parameter).Execute;
   except
-
-
+    
+    
   end;
 end;
 
