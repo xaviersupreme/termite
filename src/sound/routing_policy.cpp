@@ -30,7 +30,7 @@ bool is_background_window_host(const std::wstring& executable_path) {
     return std::find(names.begin(), names.end(), name) != names.end();
 }
 
-}  // namespace
+}  
 
 bool is_known_user_facing_executable(const std::wstring& executable_path) {
     const auto name = lower(std::filesystem::path(executable_path).filename().wstring());
@@ -61,4 +61,4 @@ std::wstring executable_display_name(const std::wstring& executable_path) {
     return stem.empty() ? executable_path : stem;
 }
 
-}  // namespace termite
+}  

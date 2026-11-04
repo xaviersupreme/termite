@@ -186,7 +186,7 @@ void test_routing_policy() {
     assert(termite::executable_display_name(L"C:\\Apps\\Player.exe") == L"Player");
 }
 
-}  // namespace
+}  
 
 int main() {
     test_sample_conversion();

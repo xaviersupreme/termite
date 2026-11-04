@@ -30,7 +30,7 @@ route_bridge_response_v1 rejected_response(const route_bridge_request_v1& reques
     return response;
 }
 
-}  // namespace
+}  
 
 route_bridge_server::~route_bridge_server() { stop(); }
 
@@ -83,8 +83,8 @@ void route_bridge_server::server_loop() {
             if (valid_route_bridge_request(request)) {
                 route_bridge_transaction_v1 transaction;
                 transaction.request = request;
-                // Routing is deliberately executed by the host's UI thread:
-                // it owns the route snapshots that must be restored on exit.
+                
+                
                 SendMessageW(target_window_.load(), route_bridge_request_message, 0,
                              reinterpret_cast<LPARAM>(&transaction));
                 response = transaction.response;
@@ -100,4 +100,4 @@ void route_bridge_server::server_loop() {
     LocalFree(descriptor);
 }
 
-}  // namespace termite
+}  

@@ -17,7 +17,7 @@ namespace {
 constexpr wchar_t host_window_class[] = L"TermiteHostWindow";
 constexpr UINT_PTR frontend_process_timer_id = 1;
 
-}  // namespace
+}  
 
 termite_host::termite_host(HINSTANCE instance)
     : instance_(instance), com_initialization_(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)) {}
@@ -84,8 +84,8 @@ LRESULT CALLBACK termite_host::window_proc(HWND window, UINT message, WPARAM wpa
         const auto create = reinterpret_cast<CREATESTRUCTW*>(lparam);
         self = static_cast<termite_host*>(create->lpCreateParams);
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
-        // DefWindowProc returns zero for WM_NCCREATE. Returning that value
-        // tells Windows to destroy the new window before the host can run.
+        
+        
         return TRUE;
     }
     return self != nullptr ? self->handle_message(message, wparam, lparam) : DefWindowProcW(window, message, wparam, lparam);
@@ -186,6 +186,14 @@ void termite_host::process_route_bridge_request(route_bridge_transaction_v1& tra
         });
     };
 
+    const auto sync_capture_targets = [this]() {
+        std::vector<unsigned long> targets;
+        for (const auto& route : automatic_routes_) {
+            for (const auto& process : route.processes) targets.push_back(process.process_id);
+        }
+        audio_engine_.set_capture_targets(targets);
+    };
+
     if (request.command == static_cast<std::uint8_t>(route_bridge_command::set_route)) {
         const auto candidate = std::find_if(candidates.begin(), candidates.end(), [&paths_match, &requested_path](const routing_candidate& value) {
             return paths_match(value.executable_path, requested_path);
@@ -195,12 +203,13 @@ void termite_host::process_route_bridge_request(route_bridge_transaction_v1& tra
             set_message(L"That app is no longer open. Refresh the list and try again.");
         } else if (request.route_to_cable != 0) {
             if (find_automatic_route(candidate->executable_path) != automatic_routes_.end()) {
-                set_message(L"Termite already routes this app to CABLE Input.");
+                set_message(L"Termite is already processing this app.");
             } else {
                 app_audio_route_snapshot previous_route;
                 std::wstring diagnostic;
                 if (session_router_.route_to_cable(*candidate, previous_route, diagnostic)) {
                     automatic_routes_.push_back(std::move(previous_route));
+                    sync_capture_targets();
                     set_message(diagnostic);
                 } else {
                     response.status = static_cast<std::uint32_t>(route_bridge_status::failed);
@@ -215,6 +224,7 @@ void termite_host::process_route_bridge_request(route_bridge_transaction_v1& tra
             std::wstring diagnostic;
             if (session_router_.restore_route(*route_to_restore, diagnostic)) {
                 if (route != automatic_routes_.end()) automatic_routes_.erase(route);
+                sync_capture_targets();
                 set_message(diagnostic);
             } else {
                 response.status = static_cast<std::uint32_t>(route_bridge_status::failed);
@@ -238,7 +248,7 @@ void termite_host::process_route_bridge_request(route_bridge_transaction_v1& tra
         destination.reserved[0] = source.routed_to_cable ? 1 : 0;
     }
     if (response.message[0] == L'\0') {
-        set_message(app_count == 0 ? L"No eligible open apps found." : L"Tick an app to route it through CABLE Input.");
+        set_message(app_count == 0 ? L"No eligible open apps found." : L"Tick an app to process it with Termite.");
     }
 }
 
@@ -248,6 +258,7 @@ void termite_host::restore_automatic_routes() {
         static_cast<void>(session_router_.restore_route(route, diagnostic));
     }
     automatic_routes_.clear();
+    audio_engine_.set_capture_targets({});
 }
 
-}  // namespace termite
+}  

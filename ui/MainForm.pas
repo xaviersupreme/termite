@@ -51,8 +51,8 @@ type
     FontHeight: Integer;
   end;
 
-  // TControl exposes Font to descendants, while this layout code needs to
-  // apply the same scale to both windowed and graphic controls.
+  
+  
   TControlAccess = class(TControl)
   public
     property Font;
@@ -91,7 +91,7 @@ type
     FArbitraryEnabled: TCheckBox;
     FArbitraryFilters: TList<TArbitraryFilter>;
     FArbitraryUpdating: Boolean;
-    // Suppress control callbacks while a profile is replacing related state.
+    
     FProfileLoading: Boolean;
     FArbitraryCursorFrequency: TEdit;
     FArbitraryCursorGain: TEdit;
@@ -205,15 +205,15 @@ uses
 const
   BaseClientWidth = 1139;
   BaseClientHeight = 622;
-  // Preserve the original control geometry at its intended physical scale.
-  // The lab remains resizable, but its default window no longer inflates the
-  // entire reference UI by roughly twenty percent.
+  
+  
+  
   DefaultClientWidth = 1139;
   DefaultClientHeight = 622;
   LeftPaneWidth = 273;
-  // These are the reference arbitrary-EQ limits.  Keep them here instead of
-  // scattering display-only values through the renderer: pointer mapping,
-  // marker creation, and the response sent to Termite must agree.
+  
+  
+  
   ArbitraryMinimumFrequency = 40.0;
   ArbitraryMaximumFrequency = 18000.0;
   Frequencies: array[0..19] of string = ('40', '55', '75', '103', '141',
@@ -472,8 +472,8 @@ end;
 procedure TVSoundRemakeForm.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
-  // The audio host is intentionally invisible.  Make the real frontend an
-  // app window so Windows gives it its own normal taskbar button.
+  
+  
   Params.ExStyle := (Params.ExStyle or WS_EX_APPWINDOW) and not WS_EX_TOOLWINDOW;
 end;
 
@@ -490,9 +490,9 @@ var
 begin
   if not HandleAllocated then
     Exit;
-  // VCL styles paint only the client area. Tell DWM to paint the remaining
-  // resize border and rounded corners with the same dark base instead of the
-  // white light-mode frame that leaked through as edge pixels.
+  
+  
+  
   DarkMode := True;
   CornerPreference := DWMWCP_ROUND;
   BorderColor := RGB(32, 32, 32);
@@ -589,7 +589,7 @@ begin
   end;
 end;
 
-{ TVSoundRemakeForm }
+
 
 constructor TVSoundRemakeForm.Create(AOwner: TComponent);
 var
@@ -604,12 +604,12 @@ begin
   DoubleBuffered := True;
   ClientWidth := BaseClientWidth;
   ClientHeight := BaseClientHeight;
-  // The reference skin owns the finished surface.  This is the fallback color
-  // used only while VCL changes themes, so it must not flash a white system UI.
+  
+  
   Color := RGB(32, 32, 32);
   Font.Name := 'Tahoma';
-  // Tahoma retains the period-correct character of the reference while being
-  // substantially clearer than MS Sans Serif on current high-density screens.
+  
+  
   Font.Height := -11;
   FBaseFormFontHeight := Font.Height;
   FLayoutScaleX := 1;
@@ -619,7 +619,7 @@ begin
   FEqualizerOn := True;
   FInputGain := 0;
   FWetMix := 100;
-  // The original graphic EQ resets its smoothing/Q control to 50%.
+  
   FSmoothing := 50;
   FActiveThemeIndex := ActiveReferenceThemeIndex;
   FArbitraryFilters := TList<TArbitraryFilter>.Create;
@@ -650,9 +650,9 @@ begin
   FArbitraryModeButton.Tag := 1;
 
   FGraphicPage := TPanel.Create(Self);
-  // Direct form children inherit the active style's textured background.
-  // Routing them through another TPanel converts that background into the
-  // panel's flat client face on bitmap styles such as Glossy.
+  
+  
+  
   FGraphicPage.Parent := Self;
   FGraphicPage.DoubleBuffered := True;
   FGraphicPage.BevelOuter := bvNone;
@@ -675,8 +675,8 @@ begin
   CreateArbitraryPage(FArbitraryPage);
 
   EqModeClick(FGraphicModeButton);
-  // These are tab selectors, not ordinary momentary buttons.  Default gives
-  // the selected tab the same stable visual state from the first paint onward.
+  
+  
   FGraphicModeButton.Default := True;
   FArbitraryModeButton.Default := False;
   ApplyThemeColors;
@@ -806,9 +806,9 @@ begin
   FStatusLog.Lines.Add('Termite owns audio processing.');
 
   ControlPanel := TPanel.Create(Self);
-  // Bitmap styles only paint their texture through direct form children.
-  // These two containers used to sit under LeftPanel, so they received its
-  // flat panel face instead of the active theme background.
+  
+  
+  
   ControlPanel.Parent := Self;
   ControlPanel.SetBounds(12, 230, 249, 103);
   ControlPanel.BevelOuter := bvLowered;
@@ -946,8 +946,8 @@ var
 begin
   FArbitraryChart := TBufferedChart.Create(Self);
   FArbitraryChart.Parent := APage;
-  // This is the original 800 x 400 paint surface, inside its two-pixel
-  // frame.  The labels are controls outside it, just as in vSound2.
+  
+  
   FArbitraryChart.SetBounds(50, 0, 802, 402);
   FArbitraryChart.Color := clBlack;
   FArbitraryChart.ParentColor := False;
@@ -1075,8 +1075,8 @@ begin
   FArbitrarySquares.SetBounds(8, 48, 76, 17);
   FArbitrarySquares.OnClick := ArbitraryOptionsChanged;
 
-  // The VCL frontend uses one consistent Termite control group on both EQ
-  // pages.  It replaces the old separate Profiles and vsound-control groups.
+  
+  
   ControlBox := NewGroup(Self, APage, ' Termite EQ: ', 531, 481, 219, 90);
   NewButton(Self, ControlBox, 'Open profile', 12, 22, 95, 25, ucOpenProfile, ButtonClick).Font.Style := [fsBold];
   NewButton(Self, ControlBox, 'Save profile', 113, 22, 95, 25, ucSaveProfile, ButtonClick);
@@ -1187,9 +1187,9 @@ procedure TVSoundRemakeForm.SeedArbitraryEndpoints(const GainDb: Double);
 var
   Filter: TArbitraryFilter;
 begin
-  // The original editor always retains these two end markers.  "All zero"
-  // deletes only user markers, so an empty response still has a defined
-  // start and end over the full 40 Hz..18 kHz hardware range.
+  
+  
+  
   FArbitraryFilters.Clear;
   Filter.Kind := afPeak;
   Filter.GainDb := ClampDouble(GainDb, -40, 40);
@@ -1282,9 +1282,9 @@ begin
     Ratio := 0
   else if FArbitrarySpline.Checked then
   begin
-    // Cardinal cubic spline.  This same math lives in the C++ bridge so a
-    // marker curve looks and sounds identical instead of merely looking
-    // smooth in the VCL window.
+    
+    
+    
     Tension := FArbitraryTension.Position / 100;
     PreviousGain := FArbitraryFilters[Max(0, LeftPoint - 1)].GainDb;
     NextGain := FArbitraryFilters[Min(FArbitraryFilters.Count - 1,
@@ -1362,8 +1362,8 @@ begin
     else
       FrequencyHz := ArbitraryMinimumFrequency +
         (ArbitraryMaximumFrequency - ArbitraryMinimumFrequency) * I / 9;
-    // Human units are easier to scan and avoid Delphi exponent-format parsing
-    // entirely, so a refresh cannot turn a 40 Hz tick into 4.00E+11.
+    
+    
     if FrequencyHz >= 1000 then
       FArbitraryXLabels[I].Caption :=
         FormatFloat('0.#', FrequencyHz / 1000, Settings) + 'k'
@@ -1504,8 +1504,8 @@ begin
 
   if Button = mbRight then
   begin
-    // The permanent start/end points define the hardware range.  Only user
-    // markers are removable, exactly as the original "All zero" behaviour.
+    
+    
     if (Nearest > 0) and (Nearest < FArbitraryFilters.Count - 1) then
     begin
       FArbitraryFilters.Delete(Nearest);
@@ -1584,8 +1584,8 @@ begin
     Filter.GainDb := ArbitraryGainForY(Y);
     FArbitraryFilters[FArbitraryDragIndex] := Filter;
     SortArbitraryFilters;
-    // Sorting makes the response single-valued if a marker moves across a
-    // neighbour.  Re-acquire it so the drag remains attached to that marker.
+    
+    
     for I := 1 to FArbitraryFilters.Count - 2 do
       if (Abs(FArbitraryFilters[I].FrequencyHz - Filter.FrequencyHz) < 0.001) and
         (Abs(FArbitraryFilters[I].GainDb - Filter.GainDb) < 0.001) then
@@ -1681,7 +1681,7 @@ begin
     ucHelp: AddStatus('The VCL frontend sends EQ changes to the local Termite audio host.');
     ucHelpAbout: AddStatus('Termite is a local audio host. The VCL window controls its EQ engine.');
     ucHelpProfiles: AddStatus('Profiles are .tsf files. Open restores an EQ; Save writes the current EQ.');
-    ucHelpRouting: AddStatus('Route apps sends an active app to CABLE Input. Untick it to restore its output.');
+    ucHelpRouting: AddStatus('Route apps picks apps for Termite to process. Untick to restore.');
     ucMixUp: FWetMix := Min(100, FWetMix + 5);
     ucMixDown: FWetMix := Max(0, FWetMix - 5);
     ucVolumeUp: FInputGain := Min(20, FInputGain + 1);
@@ -1713,9 +1713,9 @@ begin
   RefreshControls;
   RefreshChart;
   QueueEngineSync;
-  // The reference skin treats focused buttons as permanently lit.  These are
-  // instant actions, not keyboard fields, so release focus when the action is
-  // complete instead of leaving the last clicked button highlighted.
+  
+  
+  
   if Sender is TButton then
     ActiveControl := nil;
 end;
@@ -1727,8 +1727,7 @@ begin
   Dialog := TOpenDialog.Create(Self);
   try
     Dialog.Title := 'Open Termite sound file';
-    Dialog.Filter := 'Termite sound file (*.tsf)|*.tsf|' +
-      'Legacy Termite EQ profile (*.termiteeq)|*.termiteeq|All files (*.*)|*.*';
+    Dialog.Filter := 'Termite sound file |*.*';
     Dialog.FilterIndex := 1;
     Dialog.Options := Dialog.Options + [ofFileMustExist, ofPathMustExist];
     if Dialog.Execute then
@@ -1750,7 +1749,7 @@ begin
   try
     try
       Dialog.Title := 'Save Termite sound file';
-    Dialog.Filter := 'Termite sound file (*.tsf)|*.tsf|All files (*.*)|*.*';
+    Dialog.Filter := 'Termite sound file |*.*';
     Dialog.FilterIndex := 1;
     Dialog.DefaultExt := 'tsf';
     Dialog.FileName := 'Custom profile.tsf';
@@ -1759,8 +1758,8 @@ begin
 
     Root := TJSONObject.Create;
     try
-      // The host reads the standard Termite EQ profile fields.  VCL-specific
-      // state lives alongside them, so the same .tsf works in both frontends.
+      
+      
       Root.AddPair('format', 'termite-eq-profile');
       Root.AddPair('version', TJSONNumber.Create(2));
       Profile := TJSONObject.Create;
@@ -1940,9 +1939,9 @@ begin
         Mode := 'graphic';
       end;
 
-      // Do not synchronously repaint either buffered chart while a JSON
-      // profile still owns the incoming state.  A VCL repaint can run nested
-      // control notifications, and that was the source of the post-load AV.
+      
+      
+      
       FGraphicPage.Visible := not SameText(Mode, 'arbitrary');
       FArbitraryPage.Visible := not FGraphicPage.Visible;
       FGraphicModeButton.Font.Style := [];
@@ -1953,8 +1952,8 @@ begin
         FGraphicModeButton.Font.Style := [fsBold]
       else
         FArbitraryModeButton.Font.Style := [fsBold];
-      // Keep the load guard active until the visible control readouts are
-      // coherent, so their notifications cannot observe an incomplete load.
+      
+      
       RefreshControls;
       Loaded := True;
     except
@@ -1987,8 +1986,8 @@ end;
 
 procedure TVSoundRemakeForm.PresetChange(Sender: TObject);
 const
-  // Each quick curve carries the bandwidth that makes it useful.  Without
-  // this, its response depends on the previous manual smoothing setting.
+  
+  
   PresetSmoothing: array[0..6] of Integer = (78, 78, 62, 46, 44, 58, 68);
 var
   I: Integer;
@@ -2050,8 +2049,8 @@ end;
 
 procedure TVSoundRemakeForm.GraphicOptionsChanged(Sender: TObject);
 begin
-  // The graph is buffered, so repaint it now instead of waiting for the next
-  // normal paint pass.
+  
+  
   if Assigned(FChart) then
     FChart.Repaint;
 end;
@@ -2144,8 +2143,8 @@ end;
 procedure TVSoundRemakeForm.ThemeClick(Sender: TObject);
 begin
   if Sender is TMenuItem then
-    // VCL queues its style-change notifications.  Applying the style after the
-    // popup menu closes keeps that redraw from temporarily using system UI.
+    
+    
     PostMessage(Handle, WM_APP + 71, WPARAM(TMenuItem(Sender).Tag), 0);
 end;
 
@@ -2164,8 +2163,8 @@ begin
     for I := Low(FThemeItems) to High(FThemeItems) do
       FThemeItems[I].Checked := I = FActiveThemeIndex;
     AddStatus('Theme selected: ' + ReferenceThemeCaptions[ThemeIndex]);
-    // SetStyle queues CM_CUSTOMSTYLECHANGED for every form.  Queue our redraw
-    // behind that notification so the old style cannot paint one more frame.
+    
+    
     PostMessage(Handle, WM_APP + 72, 0, 0);
   end;
   if ThemeIndex <> FActiveThemeIndex then
@@ -2216,8 +2215,8 @@ var
 begin
   if not Assigned(FStatusLog) then
     Exit;
-  // TRichEdit is a native window and does not automatically follow VCL style
-  // colors.  Pull the active skin's system edit colors after every switch.
+  
+  
   if StyleServices.Enabled then
   begin
     Background := StyleServices.GetSystemColor(clWindow);
@@ -2230,8 +2229,8 @@ begin
   end;
   FStatusLog.Color := Background;
   FStatusLog.Font.Color := Foreground;
-  // Existing RichEdit lines hold their own character attributes, so changing
-  // Font.Color alone only affects future log entries.
+  
+  
   FStatusLog.SelectAll;
   FStatusLog.SelAttributes.Color := Foreground;
   FStatusLog.SelStart := Length(FStatusLog.Text);
@@ -2240,8 +2239,8 @@ end;
 
 function TVSoundRemakeForm.GraphicSmoothingQ: Double;
 begin
-  // Smoothing is the inverse of Q: 0 is a narrow, precise band and 100 is a
-  // broad band.  It changes bandwidth without reducing the fader's gain.
+  
+  
   Result := 8.0 - 7.0 * ClampDouble(FSmoothing / 100, 0, 1);
 end;
 
@@ -2255,9 +2254,9 @@ var
   DenominatorReal, DenominatorImaginary, Numerator, Magnitude: Double;
 begin
   Result := 0;
-  // This reproduces the host's peaking-biquad response calculation at
-  // 48 kHz.  The preview is consequently a true frequency response, not a
-  // cosmetic interpolation between the twenty fader positions.
+  
+  
+  
   ResponseOmega := 2 * Pi * ClampDouble(FrequencyHz, 20, 21600) / 48000;
   for I := Low(FFaders) to High(FFaders) do
   begin
@@ -2305,15 +2304,15 @@ begin
   Plot := Rect(ScaleX(46), ScaleY(25), R.Right - ScaleX(10),
     R.Bottom - ScaleY(27));
   Canvas.Brush.Style := bsClear;
-  // The chart frame is its edge, not a grid guide.  It stays visible in both
-  // view modes so the response has a stable drawing area.
+  
+  
   Canvas.Pen.Color := RGB(153, 171, 176);
   Canvas.Rectangle(Plot);
   if Assigned(FGraphicShowGrid) and FGraphicShowGrid.Checked then
   begin
     Canvas.Pen.Color := RGB(54, 68, 72);
-    // Each vertical guide follows the center of its matching fader.  The old
-    // 17-division grid could never align with the twenty band controls.
+    
+    
     for I := Low(FFaders) to High(FFaders) do
     begin
       X := FFaders[I].Left + FFaders[I].Width div 2;
@@ -2341,8 +2340,8 @@ begin
     Y := Plot.Top + Round((20 - ResponseDb) * Plot.Height / 40);
     Points[I] := Point(X, Y);
   end;
-  // A dark under-stroke creates a soft glow without the opaque green
-  // mountain.  The response remains readable at any window scale.
+  
+  
   Canvas.Pen.Color := RGB(11, 82, 60);
   Canvas.Pen.Width := 5;
   Canvas.Polyline(Points);
@@ -2382,8 +2381,8 @@ end;
 procedure TVSoundRemakeForm.DrawArbitraryChart(ACanvas: TCanvas;
   const AClientRect: TRect);
 const
-  // The reference paint box is 800 pixels wide.  Sampling at each horizontal
-  // pixel keeps spline, linear, and step rendering continuous while dragging.
+  
+  
   SampleCount = 1601;
 var
   Canvas: TCanvas;
@@ -2399,9 +2398,9 @@ begin
   SortArbitraryFilters;
   Plot := ArbitraryPlotRect;
   Canvas.Brush.Style := bsClear;
-  // This is the permanent edge of the original TPanel.  It is not part of
-  // the optional axes overlay, so the plot retains a clear boundary when the
-  // user hides axes and grid.
+  
+  
+  
   Canvas.Pen.Color := RGB(80, 97, 102);
   Canvas.Rectangle(Plot);
   if FArbitraryShowGrid.Checked then

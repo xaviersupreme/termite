@@ -7,9 +7,9 @@ uses
 
 const
   ReferenceThemeCount = 14;
-  // These names correspond only to the official VCL redistributables prepared
-  // by prepare_official_styles.ps1. Do not substitute extracted third-party
-  // resources here.
+  
+  
+  
   ReferenceThemeCaptions: array[0..ReferenceThemeCount - 1] of string = (
     'Glossy',
     'Amakrits',
@@ -150,7 +150,7 @@ begin
     if Registry.OpenKey(ThemeRegistryKey, True) then
       Registry.WriteInteger(ThemeRegistryValue, AIndex);
   except
-    // A non-writable user profile should not prevent the frontend opening.
+    
   end;
   Registry.Free;
 end;
@@ -161,9 +161,9 @@ begin
   if not ReferenceThemeIsAvailable(AIndex) then
     Exit;
   try
-    // A style handle is actually the manager's TMemoryStream.  SetStyle reads
-    // it to EOF, but does not rewind it.  Calling SetStyle with the exhausted
-    // stream returns nil and silently activates the white system style.
+    
+    
+    
     TStream(ReferenceStyleHandles[AIndex]).Position := 0;
     TStyleManager.SetStyle(ReferenceStyleHandles[AIndex]);
     Result := TStyleManager.IsCustomStyleActive;

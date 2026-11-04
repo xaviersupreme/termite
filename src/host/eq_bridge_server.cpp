@@ -27,7 +27,7 @@ void write_ack(HANDLE pipe, const eq_bridge_snapshot_v1& snapshot, eq_bridge_sta
     WriteFile(pipe, &acknowledgement, sizeof(acknowledgement), &written, nullptr);
 }
 
-}  // namespace
+}  
 
 eq_bridge_server::~eq_bridge_server() { stop(); }
 
@@ -42,7 +42,7 @@ bool eq_bridge_server::start(HWND target_window) {
 void eq_bridge_server::stop() {
     if (!worker_.joinable()) return;
     stopping_ = true;
-    // Wake ConnectNamedPipe.  The server observes stopping_ before reading.
+    
     if (WaitNamedPipeW(eq_bridge_pipe_name, 25)) {
         const auto wake = CreateFileW(eq_bridge_pipe_name, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (wake != INVALID_HANDLE_VALUE) CloseHandle(wake);
@@ -106,4 +106,4 @@ void eq_bridge_server::server_loop() {
     LocalFree(descriptor);
 }
 
-}  // namespace termite
+}  

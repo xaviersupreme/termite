@@ -59,7 +59,7 @@ void apply_graphic_gains(eq_profile& profile, const std::array<float, graphic_ba
     profile.preamp_db = preamp_db;
 }
 
-}  // namespace
+}  
 
 eq_profile eq_profile::flat() noexcept {
     eq_profile profile;
@@ -376,7 +376,7 @@ void profile_processor::configure(const eq_profile& profile, float sample_rate, 
     channels_ = std::clamp<std::size_t>(channels, 1, max_channels);
     const auto balance = std::clamp(profile.effects.balance, -1.0F, 1.0F);
     const auto pan = (balance + 1.0F) * static_cast<float>(pi * 0.25);
-    // sqrt(2) leaves centre at unity while preserving equal-power panning.
+    
     left_balance_ = std::cos(pan) * 1.41421356237F;
     right_balance_ = std::sin(pan) * 1.41421356237F;
     const auto bass = bass_shelf(profile.effects);
@@ -432,7 +432,7 @@ void profile_processor::process_interleaved(const float* input, float* output, s
             output[offset + 1] = right * right_balance_;
             for (std::size_t channel = 2; channel < channels_; ++channel) output[offset + channel] = input[offset + channel];
         } else {
-            // Width and mono never manufacture stereo from a mono endpoint.
+            
             output[offset] = input[offset];
         }
         for (std::size_t channel = 0; channel < channels_; ++channel) {
@@ -450,4 +450,4 @@ std::uint64_t profile_processor::take_limiter_clamp_count() noexcept {
     return graphic_processor_.take_limiter_clamp_count();
 }
 
-}  // namespace termite
+}  

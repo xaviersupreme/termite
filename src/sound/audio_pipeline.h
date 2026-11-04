@@ -29,7 +29,7 @@ struct audio_monitor_snapshot {
 
 [[nodiscard]] float monitor_band_frequency_hz(std::size_t index) noexcept;
 
-// Capture-side only.  Storage is fixed and configure/process never allocate.
+
 class audio_monitor_analyzer {
 public:
     void configure(std::uint32_t sample_rate, std::size_t channels) noexcept;
@@ -180,4 +180,4 @@ struct endpoint_negotiation {
                                                         audio_format render_format,
                                                         bool render_is_cable) noexcept;
 
-}  // namespace termite
+}  

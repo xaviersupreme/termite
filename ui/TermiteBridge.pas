@@ -9,12 +9,12 @@ uses
 
 const
   TermiteBridgePipe = '\\.\pipe\termite.eq.v1';
-  TermiteBridgeMagic = Cardinal($5145544D); // "MTEQ"
+  TermiteBridgeMagic = Cardinal($5145544D); 
   TermiteBridgeVersion = Word(1);
   TermiteBridgeGraphicBands = 20;
   TermiteBridgeMaxMarkers = 32;
   TermiteRouteBridgePipe = '\\.\pipe\termite.route.v1';
-  TermiteRouteBridgeMagic = Cardinal($5452544D); // "MTRT"
+  TermiteRouteBridgeMagic = Cardinal($5452544D); 
   TermiteRouteBridgeVersion = Word(1);
   TermiteRouteBridgeMaxApps = 48;
   TermiteRouteBridgePathChars = 520;
@@ -31,9 +31,9 @@ type
     GainDb: Single;
   end;
 
-  // Keep this packed record byte-for-byte identical to
-  // host/eq_bridge_protocol.h. The pipe carries values only; it never
-  // carries a Delphi or C++ object.
+  
+  
+  
   TTermiteEqSnapshot = packed record
     Magic: Cardinal;
     Version: Word;
@@ -55,8 +55,8 @@ type
 
   TTermiteRouteCommand = (trcListApps = 0, trcSetRoute = 1);
 
-  // Mirrored from host/route_bridge_protocol.h. It is intentionally a
-  // value-only record so the VCL app never reaches into the C++ host's ABI.
+  
+  
   TTermiteRouteRequest = packed record
     Magic: Cardinal;
     Version: Word;
@@ -88,10 +88,10 @@ type
     Apps: array[0..TermiteRouteBridgeMaxApps - 1] of TTermiteRouteApp;
   end;
 
-  // The VCL thread owns drawing and input.  Named-pipe I/O can briefly wait
-  // for the host, so it belongs on this small latest-value worker instead.
-  // Submit deliberately replaces an unsent snapshot: dragging a control only
-  // needs the newest EQ state, never a backlog of stale intermediate states.
+  
+  
+  
+  
   TTermiteBridgeClient = class
   private
     FLock: TObject;
@@ -135,8 +135,8 @@ begin
   try
     TTermiteBridgeClient(Parameter).Execute;
   except
-    // This worker has no UI affinity.  A failed bridge request is reported to
-    // the form as unavailable instead of leaking an exception across Win32.
+    
+    
   end;
 end;
 

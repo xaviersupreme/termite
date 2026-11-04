@@ -1,9 +1,6 @@
 # Termite
 
-Termite is a Windows equalizer for audio sent through VB-CABLE.
-
-It has a 20-band graphic equalizer, an arbitrary equalizer,
-and per-application routing.
+Termite is a Windows EQ for selected apps.
 
 ## Themes
 
@@ -19,62 +16,14 @@ and per-application routing.
 | --- |
 | <img src="assets/amakrits.png" alt="Amakrits" width="420"> |
 
-## Running it
+## Using Termite
 
-Install [VB-CABLE](https://vb-audio.com/Cable/) first. Windows should show
-`CABLE Input` and `CABLE Output` afterwards.
+Start `Termite.exe`, then use **Route apps** to pick the apps you want to process. Real simple!
 
-Start `Termite.exe`, then use **Route apps** to send an application to
-`CABLE Input`. Start playback before opening the route list; Windows only
-lists applications with an active audio session.
-
-Do not use `CABLE Input` as the default playback device. It will feed the
-cable back into itself.
-
-## Building
-
-Build the host from the repository root:
-
-```powershell
-cmake -S . -B build
-cmake --build build --target termite --parallel
-```
-
-Open [ui/TermiteUI.dproj](ui/TermiteUI.dproj) in Delphi and build
-**Debug | Win64**. This creates `build\TermiteUI.exe`.
-
-Build the host once more to put the frontend beside it:
-
-```powershell
-cmake --build build --target termite --parallel
-```
-
-Run the tests with:
-
-```powershell
-cmake --build build --target termite_dsp_tests termite_audio_tests termite_eq_bridge_tests --parallel
-ctest --test-dir build --output-on-failure
-```
-
-## Packaging
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\make_release.ps1
-```
-
-The ZIP is written to `release\Termite-win64.zip`.
-
-## Layout
-
-```
-host/       C++ process and pipe server
-sound/      WASAPI, routing, and EQ code
-ui/         Delphi frontend
-assets/     icon and artwork
-tests/      native tests
-tools/      release scripts
-```
+See [BUILD.md](BUILD.md) for build instructions.
 
 ## License
 
-Termite is MIT licensed. VB-CABLE is separate software from VB-Audio.
+MIT licensed.
+
+<span style="font-size: 10px;">:3</span>

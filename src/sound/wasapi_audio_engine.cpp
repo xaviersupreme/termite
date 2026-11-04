@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <Audioclient.h>
 #include <Mmdeviceapi.h>
+#include <audioclientactivationparams.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <ks.h>
 #include <ksmedia.h>
@@ -14,6 +15,7 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstddef>
 #include <cstdint>
 #include <cwctype>
@@ -23,6 +25,32 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+class loopback_completion_handler : public IActivateAudioInterfaceCompletionHandler, public IAgileObject {
+public:
+    loopback_completion_handler() { event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr); }
+    ~loopback_completion_handler() { if (event_) CloseHandle(event_); }
+    HRESULT wait() { WaitForSingleObject(event_, 10000); return result_; }
+    IAudioClient* client() const { return client_; }
+    ULONG STDMETHODCALLTYPE AddRef() override { return (ULONG)InterlockedIncrement(&ref_); }
+    ULONG STDMETHODCALLTYPE Release() override { LONG v = InterlockedDecrement(&ref_); if (v == 0) delete this; return (ULONG)v; }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IActivateAudioInterfaceCompletionHandler)) { *ppv = static_cast<IActivateAudioInterfaceCompletionHandler*>(this); AddRef(); return S_OK; }
+        if (riid == __uuidof(IAgileObject)) { *ppv = static_cast<IAgileObject*>(this); AddRef(); return S_OK; }
+        *ppv = nullptr; return E_NOINTERFACE;
+    }
+    HRESULT STDMETHODCALLTYPE ActivateCompleted(IActivateAudioInterfaceAsyncOperation* op) override {
+        HRESULT hr = E_FAIL; IUnknown* punk = nullptr;
+        if (op) op->GetActivateResult(&hr, &punk);
+        if (SUCCEEDED(hr) && punk) { punk->QueryInterface(__uuidof(IAudioClient), reinterpret_cast<void**>(&client_)); punk->Release(); }
+        result_ = hr; if (event_) SetEvent(event_); return S_OK;
+    }
+private:
+    volatile LONG ref_{1};
+    HANDLE event_{};
+    HRESULT result_{E_FAIL};
+    IAudioClient* client_{};
+};
 
 namespace termite {
 namespace {
@@ -127,7 +155,7 @@ const char* state_text(engine_state state) {
     switch (state) {
         case engine_state::stopped: return "Stopped";
         case engine_state::starting: return "Starting audio engine";
-        case engine_state::running: return "Processing VB-CABLE to the default output";
+        case engine_state::running: return "Processing selected apps to the default output";
         case engine_state::recovering: return "Recovering audio devices";
         case engine_state::cable_missing: return "VB-CABLE CABLE Output was not found";
         case engine_state::unsafe_output: return "Default output is VB-CABLE; choose speakers or headphones to avoid feedback";
@@ -155,29 +183,37 @@ private:
     bool registered_{};
 };
 
-}  // namespace
+}  
+
+struct capture_source {
+    ComPtr<IAudioClient> client;
+    ComPtr<IAudioCaptureClient> service;
+    HANDLE event{};
+    UINT32 buffer_frames{};
+    std::string name;
+    std::string id;
+    std::vector<float> scratch;
+
+    ~capture_source() {
+        if (event != nullptr) CloseHandle(event);
+    }
+};
 
 struct stream_session {
-    ComPtr<IAudioClient> capture_client;
+    std::vector<capture_source> captures;
     ComPtr<IAudioClient> render_client;
-    ComPtr<IAudioCaptureClient> capture_service;
     ComPtr<IAudioRenderClient> render_service;
-    HANDLE capture_event{};
     HANDLE render_event{};
-    UINT32 capture_buffer_frames{};
     UINT32 render_buffer_frames{};
     audio_format capture_format;
     audio_format render_format;
-    std::string capture_name;
     std::string render_name;
-    std::string capture_id;
     std::string render_id;
     spsc_frame_ring ring;
     streaming_resampler resampler;
     drift_controller drift;
     channel_mapper mapper;
     audio_monitor_analyzer monitor;
-    std::vector<float> capture_scratch;
     std::vector<float> active_dsp_scratch;
     std::vector<float> pending_dsp_scratch;
     std::vector<float> resample_scratch;
@@ -187,7 +223,6 @@ struct stream_session {
     std::atomic<HRESULT> failure_result{S_OK};
 
     ~stream_session() {
-        if (capture_event != nullptr) CloseHandle(capture_event);
         if (render_event != nullptr) CloseHandle(render_event);
     }
 };
@@ -254,7 +289,7 @@ bool notification_registration::register_callback() {
     return registered_;
 }
 
-}  // namespace
+}  
 
 wasapi_audio_engine::wasapi_audio_engine() {
     publish_profile(eq_profile::flat());
@@ -304,7 +339,29 @@ void wasapi_audio_engine::stop() {
 }
 
 void wasapi_audio_engine::set_profile(const eq_profile& profile) {
+    {
+        const std::scoped_lock lock(status_mutex_);
+        if (has_last_profile_ && std::memcmp(&last_profile_, &profile, sizeof(profile)) == 0) {
+            return;
+        }
+        last_profile_ = profile;
+        has_last_profile_ = true;
+    }
     publish_profile(profile);
+}
+
+void wasapi_audio_engine::set_capture_targets(const std::vector<unsigned long>& targets) {
+    {
+        const std::scoped_lock lock(capture_targets_mutex_);
+        capture_targets_ = targets;
+    }
+    capture_targets_dirty_.store(true, std::memory_order_release);
+    request_recovery();
+}
+
+std::vector<unsigned long> wasapi_audio_engine::capture_targets() const {
+    const std::scoped_lock lock(capture_targets_mutex_);
+    return capture_targets_;
 }
 
 bool wasapi_audio_engine::is_running() const noexcept {
@@ -354,8 +411,8 @@ audio_monitor_snapshot wasapi_audio_engine::monitor() const noexcept {
 }
 
 void wasapi_audio_engine::publish_profile(const eq_profile& profile) noexcept {
-    // Odd/even sequence makes the scalar store a real lock-free snapshot,
-    // rather than accepting a partially written profile between two updates.
+    
+    
     profile_revision_.fetch_add(1, std::memory_order_acq_rel);
     for (std::size_t index = 0; index < graphic_band_count; ++index) {
         band_gain_bits_[index].store(std::bit_cast<std::uint32_t>(profile.bands[index].gain_db), std::memory_order_relaxed);
@@ -465,12 +522,12 @@ void wasapi_audio_engine::set_stream_diagnostics(const stream_session& session, 
     diagnostics_.render_sample_rate = session.render_format.sample_rate;
     diagnostics_.capture_channels = session.capture_format.channels;
     diagnostics_.render_channels = session.render_format.channels;
-    diagnostics_.capture_endpoint_name = session.capture_name;
+    diagnostics_.capture_endpoint_name = "Process loopback";
     diagnostics_.render_endpoint_name = session.render_name;
-    diagnostics_.capture_endpoint_id = session.capture_id;
+    diagnostics_.capture_endpoint_id = "";
     diagnostics_.render_endpoint_id = session.render_id;
     diagnostics_.recovery_reason = std::move(recovery_reason);
-    status_text_ = state == engine_state::running ? "Processing VB-CABLE to " + session.render_name : state_text(state);
+    status_text_ = state == engine_state::running ? "Processing selected apps to " + session.render_name : state_text(state);
 }
 
 void wasapi_audio_engine::request_recovery() noexcept {
@@ -505,35 +562,20 @@ void wasapi_audio_engine::audio_loop() {
     running_ = false;
 }
 
+
+
 bool wasapi_audio_engine::run_stream() {
+    std::vector<unsigned long> targets;
+    {
+        const std::scoped_lock lock(capture_targets_mutex_);
+        targets = capture_targets_;
+    }
+    capture_targets_dirty_.store(false, std::memory_order_release);
+
     ComPtr<IMMDeviceEnumerator> enumerator;
     auto result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
     if (FAILED(result)) {
         set_status(hresult_text(result), engine_state::failed);
-        return false;
-    }
-    auto* notification = new endpoint_notification_client(this);
-    notification_registration registration(enumerator.Get(), notification);
-    registration.register_callback();
-
-    ComPtr<IMMDeviceCollection> capture_devices;
-    result = enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &capture_devices);
-    if (FAILED(result)) {
-        set_status(hresult_text(result), engine_state::failed);
-        return false;
-    }
-    UINT device_count{};
-    capture_devices->GetCount(&device_count);
-    ComPtr<IMMDevice> capture_device;
-    for (UINT index = 0; index < device_count; ++index) {
-        ComPtr<IMMDevice> candidate;
-        if (SUCCEEDED(capture_devices->Item(index, &candidate)) && is_cable_output(candidate.Get())) {
-            capture_device = candidate;
-            break;
-        }
-    }
-    if (capture_device == nullptr) {
-        set_status(state_text(engine_state::cable_missing), engine_state::cable_missing);
         return false;
     }
 
@@ -543,107 +585,141 @@ bool wasapi_audio_engine::run_stream() {
         set_status("No default output device", engine_state::failed);
         return false;
     }
-    if (is_cable_render(render_device.Get())) {
-        set_status(state_text(engine_state::unsafe_output), engine_state::unsafe_output);
-        return false;
-    }
 
     stream_session session;
-    session.capture_name = narrow(endpoint_name(capture_device.Get()));
     session.render_name = narrow(endpoint_name(render_device.Get()));
-    session.capture_id = endpoint_id(capture_device.Get());
     session.render_id = endpoint_id(render_device.Get());
-    result = capture_device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(session.capture_client.GetAddressOf()));
-    if (FAILED(result)) {
-        set_status("Could not open VB-CABLE capture: " + hresult_text(result), engine_state::failed);
-        return false;
-    }
+
     result = render_device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(session.render_client.GetAddressOf()));
     if (FAILED(result)) {
         set_status("Could not open default output: " + hresult_text(result), engine_state::failed);
         return false;
     }
 
-    WAVEFORMATEX* raw_capture_format{};
     WAVEFORMATEX* raw_render_format{};
-    result = session.capture_client->GetMixFormat(&raw_capture_format);
-    if (SUCCEEDED(result)) result = session.render_client->GetMixFormat(&raw_render_format);
-    const std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> capture_wave(raw_capture_format, CoTaskMemFree);
+    result = session.render_client->GetMixFormat(&raw_render_format);
     const std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> render_wave(raw_render_format, CoTaskMemFree);
-    if (FAILED(result) || capture_wave == nullptr || render_wave == nullptr) {
-        set_status("Could not negotiate endpoint formats", engine_state::failed);
+    if (FAILED(result) || render_wave == nullptr) {
+        set_status("Could not negotiate output format", engine_state::failed);
         return false;
     }
-    session.capture_format = to_audio_format(*capture_wave);
     session.render_format = to_audio_format(*render_wave);
+
+    
+    session.capture_format.encoding = sample_encoding::float32;
+    session.capture_format.sample_rate = 48000;
+    session.capture_format.channels = 2;
+
     const auto negotiation = negotiate_endpoints(session.capture_format, session.render_format, false);
-    if (!negotiation.valid()) {
-        set_status(state_text(engine_state::unsupported_format), engine_state::unsupported_format);
-        return false;
+    if (!negotiation.valid() && negotiation.error != endpoint_negotiation_error::none) {
+        
     }
 
-    result = session.capture_client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, 0, 0, capture_wave.get(), nullptr);
-    if (FAILED(result)) {
-        set_status("Could not initialize VB-CABLE capture: " + hresult_text(result), engine_state::failed);
-        return false;
+    
+    for (unsigned long pid : targets) {
+        capture_source src;
+        src.name = "PID " + std::to_string(pid);
+        auto* handler = new loopback_completion_handler();
+        AUDIOCLIENT_ACTIVATION_PARAMS params{};
+        params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+        params.ProcessLoopbackParams.TargetProcessId = pid;
+        params.ProcessLoopbackParams.ProcessLoopbackMode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+        PROPVARIANT pv{};
+        pv.vt = VT_BLOB;
+        pv.blob.cbSize = sizeof(params);
+        pv.blob.pBlobData = (BYTE*)&params;
+        IActivateAudioInterfaceAsyncOperation* op = nullptr;
+        result = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, __uuidof(IAudioClient), &pv, handler, &op);
+        if (SUCCEEDED(result)) result = handler->wait();
+        if (SUCCEEDED(result)) {
+            src.client = handler->client();
+        }
+        if (op) op->Release();
+        handler->Release();
+        if (FAILED(result) || src.client == nullptr) {
+            set_status("Could not activate capture for PID " + std::to_string(pid) + ": " + hresult_text(result), engine_state::failed);
+            return false;
+        }
+
+        WAVEFORMATEX cfmt{};
+        cfmt.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+        cfmt.nChannels = 2;
+        cfmt.nSamplesPerSec = 48000;
+        cfmt.wBitsPerSample = 32;
+        cfmt.nBlockAlign = cfmt.nChannels * cfmt.wBitsPerSample / 8;
+        cfmt.nAvgBytesPerSec = cfmt.nSamplesPerSec * cfmt.nBlockAlign;
+        cfmt.cbSize = 0;
+
+        src.event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        result = src.client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, 0, 0, &cfmt, nullptr);
+        if (FAILED(result)) {
+            set_status("Could not initialize capture: " + hresult_text(result), engine_state::failed);
+            return false;
+        }
+        result = src.client->GetService(IID_PPV_ARGS(&src.service));
+        if (FAILED(result) || src.service == nullptr) {
+            set_status("Could not open capture service: " + hresult_text(result), engine_state::failed);
+            return false;
+        }
+        src.client->GetBufferSize(&src.buffer_frames);
+        src.client->SetEventHandle(src.event);
+        src.scratch.assign(static_cast<std::size_t>(src.buffer_frames) * 2, 0.0F);
+        session.captures.push_back(std::move(src));
     }
-    result = session.render_client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, 0, 0, render_wave.get(), nullptr);
+
+    
+    result = session.render_client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | 0x01000000, 0, 0, render_wave.get(), nullptr);
     if (FAILED(result)) {
         set_status("Could not initialize default output: " + hresult_text(result), engine_state::failed);
         return false;
     }
-    result = session.capture_client->GetService(IID_PPV_ARGS(&session.capture_service));
-    if (SUCCEEDED(result)) result = session.render_client->GetService(IID_PPV_ARGS(&session.render_service));
-    if (FAILED(result) || session.capture_service == nullptr || session.render_service == nullptr) {
-        set_status("Could not open audio stream services", engine_state::failed);
+    result = session.render_client->GetService(IID_PPV_ARGS(&session.render_service));
+    if (FAILED(result) || session.render_service == nullptr) {
+        set_status("Could not open render service: " + hresult_text(result), engine_state::failed);
         return false;
     }
-    if (FAILED(session.capture_client->GetBufferSize(&session.capture_buffer_frames)) ||
-        FAILED(session.render_client->GetBufferSize(&session.render_buffer_frames))) {
-        set_status("Could not query endpoint buffer sizes", engine_state::failed);
-        return false;
-    }
-    session.capture_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    session.render_client->GetBufferSize(&session.render_buffer_frames);
     session.render_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (session.capture_event == nullptr || session.render_event == nullptr ||
-        FAILED(session.capture_client->SetEventHandle(session.capture_event)) ||
-        FAILED(session.render_client->SetEventHandle(session.render_event))) {
-        set_status("Could not create endpoint events", engine_state::failed);
+    if (session.render_event == nullptr || FAILED(session.render_client->SetEventHandle(session.render_event))) {
+        set_status("Could not create render event", engine_state::failed);
         return false;
     }
 
-    const auto ring_capacity = std::max<std::size_t>(session.capture_format.sample_rate, session.capture_buffer_frames * 4U);
-    if (!session.ring.configure(ring_capacity, session.capture_format.channels) ||
-        !session.resampler.configure(session.capture_format.sample_rate, session.render_format.sample_rate, session.capture_format.channels) ||
-        !session.mapper.configure(session.capture_format.channels, session.render_format.channels)) {
+    const auto ring_capacity = std::max<std::size_t>(48000, session.render_buffer_frames * 4U);
+    if (!session.ring.configure(ring_capacity, 2) ||
+        !session.resampler.configure(48000, session.render_format.sample_rate, 2) ||
+        !session.mapper.configure(2, session.render_format.channels)) {
         set_status("Could not configure audio conversion pipeline", engine_state::unsupported_format);
         return false;
     }
-    session.drift.configure(session.capture_format.sample_rate);
+    session.drift.configure(48000, 40);
     target_fill_frames_.store(session.drift.target_frames(), std::memory_order_release);
-    session.capture_scratch.assign(static_cast<std::size_t>(session.capture_buffer_frames) * session.capture_format.channels, 0.0F);
-    session.active_dsp_scratch.assign(static_cast<std::size_t>(session.capture_buffer_frames) * session.capture_format.channels, 0.0F);
-    session.pending_dsp_scratch.assign(static_cast<std::size_t>(session.capture_buffer_frames) * session.capture_format.channels, 0.0F);
-    session.resample_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * session.capture_format.channels, 0.0F);
+    session.active_dsp_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * 2, 0.0F);
+    session.pending_dsp_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * 2, 0.0F);
+    session.resample_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * 2, 0.0F);
     session.render_scratch.assign(static_cast<std::size_t>(session.render_buffer_frames) * session.render_format.channels, 0.0F);
-    session.monitor.configure(session.capture_format.sample_rate, session.capture_format.channels);
+    session.monitor.configure(48000, 2);
     publish_monitor({});
 
-    result = session.capture_client->Start();
-    if (SUCCEEDED(result)) result = session.render_client->Start();
-    if (FAILED(result)) {
-        session.capture_client->Stop();
-        session.render_client->Stop();
-        set_status("Could not start audio streams: " + hresult_text(result), engine_state::failed);
+    for (auto& src : session.captures) {
+        if (FAILED(src.client->Start())) {
+            set_status("Could not start capture", engine_state::failed);
+            return false;
+        }
+    }
+    if (FAILED(session.render_client->Start())) {
+        set_status("Could not start render", engine_state::failed);
         return false;
     }
+
     set_stream_diagnostics(session, engine_state::running);
     std::thread capture_thread(&wasapi_audio_engine::capture_worker, this, std::ref(session));
     std::thread render_thread(&wasapi_audio_engine::render_worker, this, std::ref(session));
     capture_thread.join();
     render_thread.join();
-    session.capture_client->Stop();
-    session.render_client->Stop();
+
+    for (auto& src : session.captures) if (src.client) src.client->Stop();
+    if (session.render_client) session.render_client->Stop();
     ring_fill_frames_ = 0;
     target_fill_frames_ = 0;
 
@@ -669,72 +745,95 @@ void wasapi_audio_engine::capture_worker(stream_session& session) {
     std::uint64_t pending_revision{};
     std::size_t transition_frame{};
     std::size_t transition_frames{};
-    const HANDLE events[]{session.capture_event,
-                          static_cast<HANDLE>(stop_event_.load(std::memory_order_acquire)),
-                          static_cast<HANDLE>(recovery_event_.load(std::memory_order_acquire))};
-    while (!stop_requested_.load(std::memory_order_acquire) && !session.failed.load(std::memory_order_acquire)) {
-        const auto waited = WaitForMultipleObjects(std::size(events), events, FALSE, 500);
-        if (waited == WAIT_OBJECT_0 + 1U || waited == WAIT_OBJECT_0 + 2U) break;
-        if (waited != WAIT_OBJECT_0) continue;
-        UINT32 packet_frames{};
-        HRESULT result{};
-        while (SUCCEEDED(result = session.capture_service->GetNextPacketSize(&packet_frames)) && packet_frames != 0) {
-            BYTE* capture_data{};
-            DWORD flags{};
-            result = session.capture_service->GetBuffer(&capture_data, &packet_frames, &flags, nullptr, nullptr);
-            if (FAILED(result)) break;
-            if (packet_frames > session.capture_buffer_frames) {
-                session.capture_service->ReleaseBuffer(packet_frames);
-                result = E_FAIL;
-                break;
-            }
-            const auto sample_count = static_cast<std::size_t>(packet_frames) * session.capture_format.channels;
-            if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0) {
-                std::fill_n(session.capture_scratch.data(), sample_count, 0.0F);
-            } else if (!decode_interleaved({reinterpret_cast<const std::byte*>(capture_data), sample_count * session.capture_format.bytes_per_sample()},
-                                           session.capture_format, packet_frames, session.capture_scratch.data())) {
-                session.capture_service->ReleaseBuffer(packet_frames);
-                result = E_FAIL;
-                break;
-            }
-            const auto requested_revision = profile_revision_.load(std::memory_order_acquire);
-            if (active_revision == std::numeric_limits<std::uint64_t>::max()) {
-                const auto profile = snapshot_profile(active_revision);
-                active_processor.configure(profile, static_cast<float>(session.capture_format.sample_rate), session.capture_format.channels);
-            }
-            if (transition_frames == 0 && requested_revision != active_revision) {
-                const auto profile = snapshot_profile(pending_revision);
-                pending_processor.configure(profile, static_cast<float>(session.capture_format.sample_rate), session.capture_format.channels);
-                transition_frame = 0;
-                transition_frames = std::max<std::size_t>(1, static_cast<std::size_t>(session.capture_format.sample_rate) * profile_transition_ms / 1000U);
-            }
+    
+    std::vector<HANDLE> events;
+    for (auto& src : session.captures) events.push_back(src.event);
+    events.push_back(static_cast<HANDLE>(stop_event_.load(std::memory_order_acquire)));
+    events.push_back(static_cast<HANDLE>(recovery_event_.load(std::memory_order_acquire)));
+    const std::size_t stop_index = session.captures.size();
+    const std::size_t recovery_index = session.captures.size() + 1;
 
-            active_processor.process_interleaved(session.capture_scratch.data(), session.active_dsp_scratch.data(), packet_frames);
-            if (transition_frames != 0) {
-                pending_processor.process_interleaved(session.capture_scratch.data(), session.pending_dsp_scratch.data(), packet_frames);
-                equal_power_crossfade(session.active_dsp_scratch.data(), session.pending_dsp_scratch.data(), session.active_dsp_scratch.data(),
-                                      packet_frames, session.capture_format.channels, transition_frame, transition_frames);
-                transition_frame += packet_frames;
-                if (transition_frame >= transition_frames) {
-                    active_processor = pending_processor;
-                    active_revision = pending_revision;
-                    transition_frames = 0;
+    while (!stop_requested_.load(std::memory_order_acquire) && !session.failed.load(std::memory_order_acquire) && !capture_targets_dirty_.load(std::memory_order_acquire)) {
+        const auto waited = WaitForMultipleObjects((DWORD)events.size(), events.data(), FALSE, 500);
+        if (waited == WAIT_OBJECT_0 + (DWORD)stop_index || waited == WAIT_OBJECT_0 + (DWORD)recovery_index) break;
+        if (waited == WAIT_TIMEOUT) continue;
+        if (waited < WAIT_OBJECT_0 || waited >= WAIT_OBJECT_0 + (DWORD)events.size()) continue;
+
+        std::size_t capture_index = waited - WAIT_OBJECT_0;
+        
+        for (std::size_t ci = 0; ci < session.captures.size(); ++ci) {
+            if (ci != capture_index) {
+                
+                if (WaitForSingleObject(session.captures[ci].event, 0) != WAIT_OBJECT_0) continue;
+            }
+            auto& src = session.captures[ci];
+            UINT32 packet_frames{};
+            HRESULT result{};
+            while (SUCCEEDED(result = src.service->GetNextPacketSize(&packet_frames)) && packet_frames != 0) {
+                BYTE* capture_data{};
+                DWORD flags{};
+                result = src.service->GetBuffer(&capture_data, &packet_frames, &flags, nullptr, nullptr);
+                if (FAILED(result)) break;
+                if (packet_frames > src.buffer_frames) {
+                    src.service->ReleaseBuffer(packet_frames);
+                    result = E_FAIL;
+                    break;
                 }
+                const auto sample_count = static_cast<std::size_t>(packet_frames) * 2;
+                if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0) {
+                    std::fill_n(src.scratch.data(), sample_count, 0.0F);
+                } else if (!decode_interleaved({reinterpret_cast<const std::byte*>(capture_data), sample_count * session.capture_format.bytes_per_sample()},
+                                               session.capture_format, packet_frames, src.scratch.data())) {
+                    src.service->ReleaseBuffer(packet_frames);
+                    result = E_FAIL;
+                    break;
+                }
+                const auto requested_revision = profile_revision_.load(std::memory_order_acquire);
+                if (active_revision == std::numeric_limits<std::uint64_t>::max()) {
+                    const auto profile = snapshot_profile(active_revision);
+                    active_processor.configure(profile, 48000.0F, 2);
+                }
+                if (transition_frames == 0 && requested_revision != active_revision) {
+                    const auto profile = snapshot_profile(pending_revision);
+                    pending_processor.configure(profile, 48000.0F, 2);
+                    transition_frame = 0;
+                    transition_frames = std::max<std::size_t>(1, 48000U * 10 / 1000U);
+                }
+                active_processor.process_interleaved(src.scratch.data(), session.active_dsp_scratch.data(), packet_frames);
+                if (transition_frames != 0) {
+                    pending_processor.process_interleaved(src.scratch.data(), session.pending_dsp_scratch.data(), packet_frames);
+                    equal_power_crossfade(session.active_dsp_scratch.data(), session.pending_dsp_scratch.data(), session.active_dsp_scratch.data(),
+                                          packet_frames, 2, transition_frame, transition_frames);
+                    transition_frame += packet_frames;
+                    if (transition_frame >= transition_frames) {
+                        active_processor = pending_processor;
+                        active_revision = pending_revision;
+                        transition_frames = 0;
+                    }
+                }
+                const auto limiter_clamps = active_processor.take_limiter_clamp_count() + pending_processor.take_limiter_clamp_count();
+                if (session.monitor.process(src.scratch.data(), session.active_dsp_scratch.data(), packet_frames, limiter_clamps)) {
+                    publish_monitor(session.monitor.snapshot());
+                }
+                
+                
+                for (std::size_t i = 0; i < static_cast<std::size_t>(packet_frames) * 2; ++i) {
+                    session.active_dsp_scratch[i] *= 100.0F;
+                }
+                const auto pushed = session.ring.push(session.active_dsp_scratch.data(), packet_frames);
+                if (pushed < packet_frames) {
+                    capture_overflows_.fetch_add(packet_frames - pushed, std::memory_order_acq_rel);
+                }
+                src.service->ReleaseBuffer(packet_frames);
+                ring_fill_frames_.store(session.ring.available_read(), std::memory_order_release);
+                static std::atomic<int> capCount{0};
             }
-            const auto limiter_clamps = active_processor.take_limiter_clamp_count() + pending_processor.take_limiter_clamp_count();
-            if (session.monitor.process(session.capture_scratch.data(), session.active_dsp_scratch.data(), packet_frames, limiter_clamps)) {
-                publish_monitor(session.monitor.snapshot());
+            if (FAILED(result)) {
+                session.failure_result = result;
+                session.failed = true;
+                request_recovery();
+                break;
             }
-            const auto pushed = session.ring.push(session.active_dsp_scratch.data(), packet_frames);
-            if (pushed < packet_frames) capture_overflows_.fetch_add(packet_frames - pushed, std::memory_order_acq_rel);
-            session.capture_service->ReleaseBuffer(packet_frames);
-            ring_fill_frames_.store(session.ring.available_read(), std::memory_order_release);
-        }
-        if (FAILED(result)) {
-            session.failure_result = result;
-            session.failed = true;
-            request_recovery();
-            break;
         }
     }
     CoUninitialize();
@@ -751,7 +850,7 @@ void wasapi_audio_engine::render_worker(stream_session& session) {
     const HANDLE events[]{session.render_event,
                           static_cast<HANDLE>(stop_event_.load(std::memory_order_acquire)),
                           static_cast<HANDLE>(recovery_event_.load(std::memory_order_acquire))};
-    while (!stop_requested_.load(std::memory_order_acquire) && !session.failed.load(std::memory_order_acquire)) {
+    while (!stop_requested_.load(std::memory_order_acquire) && !session.failed.load(std::memory_order_acquire) && !capture_targets_dirty_.load(std::memory_order_acquire)) {
         const auto waited = WaitForMultipleObjects(std::size(events), events, FALSE, 500);
         if (waited == WAIT_OBJECT_0 + 1U || waited == WAIT_OBJECT_0 + 2U) break;
         if (waited != WAIT_OBJECT_0) continue;
@@ -796,7 +895,9 @@ void wasapi_audio_engine::render_worker(stream_session& session) {
             session.mapper.map_frame(session.resample_scratch.data() + frame * session.capture_format.channels,
                                      session.render_scratch.data() + frame * session.render_format.channels);
         }
-        if (produced < writable_frames) render_underflows_.fetch_add(writable_frames - produced, std::memory_order_acq_rel);
+        if (produced < writable_frames) {
+            render_underflows_.fetch_add(writable_frames - produced, std::memory_order_acq_rel);
+        }
         if (!encode_interleaved(session.render_scratch.data(), session.render_format, writable_frames,
                                 {reinterpret_cast<std::byte*>(render_data), static_cast<std::size_t>(writable_frames) * session.render_format.channels * session.render_format.bytes_per_sample()})) {
             session.render_service->ReleaseBuffer(writable_frames, AUDCLNT_BUFFERFLAGS_SILENT);
@@ -817,4 +918,5 @@ void wasapi_audio_engine::render_worker(stream_session& session) {
     CoUninitialize();
 }
 
-}  // namespace termite
+
+}  

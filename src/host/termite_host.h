@@ -12,8 +12,8 @@
 
 namespace termite {
 
-// The native side deliberately has no user interface. It owns the audio
-// engine and the local bridges; TermiteUI.exe is the only visible application.
+
+
 class termite_host {
 public:
     explicit termite_host(HINSTANCE instance);
@@ -48,4 +48,4 @@ private:
     std::vector<app_audio_route_snapshot> automatic_routes_;
 };
 
-}  // namespace termite
+}  

@@ -9,4 +9,4 @@ namespace termite {
 [[nodiscard]] float bridge_arbitrary_response_db(const eq_bridge_snapshot_v1& snapshot, float frequency_hz) noexcept;
 [[nodiscard]] eq_profile profile_from_bridge_snapshot(const eq_bridge_snapshot_v1& snapshot, const eq_profile& current) noexcept;
 
-}  // namespace termite
+}  

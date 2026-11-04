@@ -29,8 +29,8 @@ end;
 
 function RunningHostIsAvailable: Boolean;
 begin
-  // A directly launched developer build can join an already-running host.
-  // The normal production path below launches the host first.
+  
+  
   Result := WaitNamedPipe('\\.\pipe\termite.eq.v1', 100);
 end;
 
@@ -51,9 +51,9 @@ var
   InitialThemeIndex: Integer;
 
 begin
-  // TermiteUI.exe is the host's private frontend.  Letting a second copy open
-  // against the first host made an extracted release look like it had a
-  // different UI: it was just a restored, unhosted window over the original.
+  
+  
+  
   if not StartedByTermiteHost then
   begin
     if RunningHostIsAvailable then
@@ -65,8 +65,8 @@ begin
     if LaunchHostForStandaloneFrontend then
       Halt(0);
   end;
-  // Do not rely on automatic resource discovery. It can silently omit styles
-  // when the host VCL version differs from the executable that supplied them.
+  
+  
   TStyleManager.AutoDiscoverStyleResources := False;
   Application.Initialize;
   Application.MainFormOnTaskbar := True;

@@ -13,10 +13,10 @@ type
   TChartRenderEvent = procedure(ACanvas: TCanvas;
     const AClientRect: TRect) of object;
 
-  // TPaintBox is a windowless graphic control. Its parent is repainted before
-  // each graph update, which exposes a one-frame blank graph while controls
-  // move. This control owns a double-buffered HWND and presents completed
-  // frames only.
+  
+  
+  
+  
   TBufferedChart = class(TCustomControl)
   private
     FBuffer: Vcl.Graphics.TBitmap;
@@ -45,8 +45,8 @@ constructor TBufferedChart.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle + [csOpaque];
-  // The chart supplies every pixel itself. Excluding it from VCL style
-  // painting prevents a themed background erase between graph frames.
+  
+  
   StyleElements := [];
   DoubleBuffered := True;
   ParentDoubleBuffered := False;
@@ -63,8 +63,8 @@ end;
 
 procedure TBufferedChart.WMEraseBkgnd(var Message: TWMEraseBkgnd);
 begin
-  // Paint presents a complete back buffer, so Windows must not expose the
-  // control background while a graph is being recalculated.
+  
+  
   Message.Result := 1;
 end;
 

@@ -7,10 +7,10 @@
 
 namespace termite {
 
-// This is deliberately a C-compatible wire format.  It is mirrored by the
-// VCL client; never put STL objects, pointers, or C++ enums on this boundary.
+
+
 inline constexpr wchar_t eq_bridge_pipe_name[] = L"\\\\.\\pipe\\termite.eq.v1";
-inline constexpr std::uint32_t eq_bridge_magic = 0x5145544DU;  // "MTEQ"
+inline constexpr std::uint32_t eq_bridge_magic = 0x5145544DU;  
 inline constexpr std::uint16_t eq_bridge_version = 1;
 inline constexpr std::size_t eq_bridge_max_markers = 32;
 
@@ -55,4 +55,4 @@ static_assert(std::is_trivially_copyable_v<eq_bridge_snapshot_v1>);
 static_assert(sizeof(eq_bridge_snapshot_v1) == 368);
 static_assert(sizeof(eq_bridge_ack_v1) == 16);
 
-}  // namespace termite
+}  

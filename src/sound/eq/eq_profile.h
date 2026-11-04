@@ -8,13 +8,13 @@
 namespace termite {
 
 inline constexpr std::size_t graphic_band_count = 20;
-// The graphic EQ intentionally remains a 20-band control.  Arbitrary EQ is
-// a separate curve processor: it needs enough centres to follow marker edits
-// without pretending that twenty fixed sliders are an arbitrary response.
+
+
+
 inline constexpr std::size_t arbitrary_band_count = 64;
-// vSound 2's arbitrary editor spans 40 Hz..18 kHz.  This range is shared by
-// the VCL marker editor and the pipe bridge, so the curve the user draws is
-// never silently clamped to a different response in the audio host.
+
+
+
 inline constexpr float arbitrary_min_frequency_hz = 40.0F;
 inline constexpr float arbitrary_max_frequency_hz = 18000.0F;
 inline constexpr std::array<float, graphic_band_count> graphic_band_frequencies{
@@ -39,19 +39,19 @@ struct eq_band {
     bool enabled{true};
 };
 
-// These effects deliberately live in the profile instead of in the UI.  A
-// profile revision is therefore one complete, click-free capture-side change.
+
+
 struct tone_effects {
     bool bass_enabled{};
     float bass_db{};
     bool loudness_enabled{};
-    float loudness_amount{};  // 0.0 - 1.0
+    float loudness_amount{};  
     bool clarity_enabled{};
     float clarity_db{};
     bool stereo_enabled{};
-    float stereo_width{1.0F}; // 0.5 - 1.5
+    float stereo_width{1.0F}; 
     bool mono{};
-    float balance{};          // -1.0 (left) - 1.0 (right)
+    float balance{};          
 };
 
 enum class eq_processing_mode {
@@ -121,9 +121,9 @@ private:
     std::uint64_t limiter_clamp_count_{};
 };
 
-// The complete capture-side processing chain.  It keeps the graphic EQ
-// processor separately reusable while giving profile transitions one stateful
-// object to crossfade.
+
+
+
 class profile_processor {
 public:
     void configure(const eq_profile& profile, float sample_rate, std::size_t channels) noexcept;
@@ -145,4 +145,4 @@ private:
     float right_balance_{1.0F};
 };
 
-}  // namespace termite
+}  

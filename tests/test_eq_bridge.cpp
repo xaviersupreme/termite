@@ -18,7 +18,7 @@ bool read_exact(HANDLE pipe, void* buffer, DWORD size) {
     return ReadFile(pipe, buffer, size, &received, nullptr) != FALSE && received == size;
 }
 
-}  // namespace
+}  
 
 int main() {
     const auto message_window = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
